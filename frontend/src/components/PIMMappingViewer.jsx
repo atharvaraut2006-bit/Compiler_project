@@ -8,7 +8,8 @@ import {
   FaChevronDown,
   FaChevronUp,
   FaCircleInfo,
-  FaShuffle
+  FaShuffle,
+  FaFilePdf
 } from 'react-icons/fa6';
 
 export const PIMMappingViewer = ({ mapping }) => {
@@ -126,14 +127,27 @@ export const PIMMappingViewer = ({ mapping }) => {
               Optimal: {selectedStrategy}
             </span>
           </div>
-          <button
-            className="btn btn-ghost btn-sm btn-assumptions"
-            onClick={() => setShowAssumptions(!showAssumptions)}
-          >
-            <FaCircleInfo size={13} />
-            <span>Simulation Assumptions</span>
-            {showAssumptions ? <FaChevronUp size={11} /> : <FaChevronDown size={11} />}
-          </button>
+          <div className="cost-header-actions" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <a
+              href="http://127.0.0.1:8000/api/cost-model-pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-ghost btn-sm btn-assumptions"
+              title="Download publication-quality Cost Model Formulas & Specifications PDF"
+              style={{ textDecoration: 'none' }}
+            >
+              <FaFilePdf size={13} color="#dc2626" />
+              <span>Formulas PDF</span>
+            </a>
+            <button
+              className="btn btn-ghost btn-sm btn-assumptions"
+              onClick={() => setShowAssumptions(!showAssumptions)}
+            >
+              <FaCircleInfo size={13} />
+              <span>Simulation Assumptions</span>
+              {showAssumptions ? <FaChevronUp size={11} /> : <FaChevronDown size={11} />}
+            </button>
+          </div>
         </div>
 
         {/* Explainable Decision Rationale Banner */}

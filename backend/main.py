@@ -113,6 +113,24 @@ def get_examples():
     return EXAMPLES
 
 
+from fastapi.responses import FileResponse
+
+
+@app.get("/api/cost-model-pdf")
+def download_cost_model_pdf():
+    """Serves the publication-quality cost model specification PDF."""
+    pdf_path = _current_dir.parent / "Compiler_for_PIM_Cost_Model_Specification.pdf"
+    if not pdf_path.exists():
+        pdf_path = _current_dir.parent / "docs" / "Compiler_for_PIM_Cost_Model_Specification.pdf"
+    if not pdf_path.exists():
+        raise HTTPException(status_code=404, detail="Specification PDF not found.")
+    return FileResponse(
+        str(pdf_path),
+        media_type="application/pdf",
+        filename="Compiler_for_PIM_Cost_Model_Specification.pdf"
+    )
+
+
 @app.post("/api/compile")
 def compile_code(req: CompileRequest):
     """

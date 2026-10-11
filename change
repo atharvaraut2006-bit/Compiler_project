@@ -438,9 +438,22 @@ Repository is ready for review demonstration.
     - Added Workload Profile summary bar and collapsible Simulation Assumptions legend.
     - Mapped instructions display both structural capability and cost-optimal assignment.
 
+  * Memory Footprint Derivation & Loop Boundary Isolation:
+    - Resolved the "80 bytes" memory footprint query:
+      * In the initial unpartitioned calculation, 16 bytes of array initialization (4 elements * 4 bytes)
+        were globally multiplied by the loop count (4), producing 64 bytes written + 16 bytes read in loop = 80 bytes.
+      * Refined WorkloadAnalyzer with explicit loop-boundary tracking: startup array initialization
+        is counted once (16 bytes written), while loop streaming reads are scaled by loop iterations (16 bytes read),
+        producing the exact dynamic data movement of 32 bytes (or 16 bytes static declared array footprint).
+  * Publication-Quality PDF Cost Model Specification:
+    - Created `generate_pdf.py` using ReportLab to render `Compiler_for_PIM_Cost_Model_Specification.pdf`.
+    - Contains master 4-term equations, term definitions, architectural parameters table,
+      candidate strategies selection policy, memory footprint derivation, and numerical case studies.
+    - Integrated direct download button in PIMMappingViewer and added `GET /api/cost-model-pdf` endpoint.
+
 - Automated Test Verification:
-  * 58 automated pytest tests passing with 100% pass rate in 0.38s:
-    - `test_cost_model.py`: 8 passed (small workload CPU preference, large workload PIM offload, unsupported ops fallback, 4-term formula integrity, strided access detection, explicit unknown handling, cost enforcement)
+  * 58 automated pytest tests passing with 100% pass rate in 0.35s:
+    - `test_cost_model.py`: 8 passed
     - `test_lexer.py`: 8 passed
     - `test_parser.py`: 9 passed
     - `test_semantic.py`: 7 passed
