@@ -402,20 +402,50 @@ Repository is ready for review demonstration.
     - Host CPU controls loop iteration, counter stepping, and termination checks.
     - Compute-intensive array operations and vector arithmetic inside the loop body execute in-situ in PIM banks.
 
-- UI Table Spacing Polish:
+- UI Table Column Spacing Polish:
   * Resolved excessive blank space between table columns across all data views:
-    - Token Table: balanced column proportions (`#`: 55px, `Token Type`: 180px, `Value`: flexible/compact, `Line`: 85px, `Column`: 85px).
+    - Token Table: Packed container with `max-width: 620px` and proportional fixed columns (`#`: 44px, `Token Type`: 155px, `Value`: 220px, `Line`: 65px, `Column`: 75px).
+    - Eliminated the wide gap between `Value` and `Line`, creating natural, compact, professional IDE-grade spacing.
     - Symbol Table: balanced widths for `Symbol Name`, `Type`, `Kind`, `Size`, `Scope Level`, `Location`.
     - IR Table & PIM Mapping Table: compact opcode/target/operand columns with natural alignment.
-    - Eliminated unnatural horizontal gaps; all tables display crisp, evenly distributed columns.
+
+- Phase 2 Research-Informed Cost-Aware Optimization Extension:
+  * Inspired by Near-Memory Computing optimization (NMC-Opt) literature review: analytical offloading, data-layout awareness, and joint computation/data movement modeling.
+  * Static Workload Analysis Pass (`backend/compiler/cost_model.py`):
+    - Computes arithmetic and comparison operation counts.
+    - Identifies arrays read and written, estimating total memory bytes moved.
+    - Statically extracts deterministic loop iterations from AST bounds (represented explicitly as None when dynamic).
+    - Detects array access patterns (`sequential`, `strided`, `scalar_only`) and data reuse.
+    - Identifies data-layout transformation requirements and PIM hardware constraints.
+  * Candidate Execution Strategies:
+    - `CPU_ONLY`: Host CPU executes all operations; all data traverses the off-chip memory bus.
+    - `DIRECT_PIM`: Operations execute in-situ in DRAM row buffers; only small scalar inputs traverse bus.
+    - `TRANSFORMED_PIM`: Layout-aware PIM offload accounting for in-memory data reorganization costs.
+    - Correctness: Infeasible candidates (e.g. unsupported ops like `DIV`/`MOD` or pure stack scalars) are rejected with explicit reasons.
+  * Transparent Four-Term Analytical Cost Model:
+    `total_cost = compute_cost + transfer_cost + layout_cost + synchronization_cost`
+    - Compute cost: Scaled by operation counts and core cycles (`CPU = 1.0 cyc/op`, `PIM = 1.2 cyc/op`).
+    - Transfer cost: Modeled off-chip bus bandwidth (`2.0 B/cyc`) vs internal DRAM bandwidth (`32.0 B/cyc`).
+    - Layout cost: Penalty for strided/uncoalesced data reorganization (`0.25 cyc/B`).
+    - Synchronization cost: Host CPU dispatch, kernel setup, and barrier synchronization (`60.0 cyc`).
+    - All parameters clearly documented and labeled as simulation assumptions.
+  * Cost-Aware Mapping Decisions:
+    - Small workloads (e.g. 1 scalar addition or small arrays) prefer CPU execution because launch sync overhead outweighs compute benefit.
+    - Large memory-bound workloads (e.g. 100-element array accumulation) select PIM execution, achieving significant speedup by eliminating memory bus traffic.
+  * Explainable Interactive UI Dashboard (`PIMMappingViewer.jsx`):
+    - Added Strategy Comparison Matrix showing all 3 candidates with 4-term cost breakdowns.
+    - Added Optimal Decision Card with plain-English rationale and estimated speedup factor.
+    - Added Workload Profile summary bar and collapsible Simulation Assumptions legend.
+    - Mapped instructions display both structural capability and cost-optimal assignment.
 
 - Automated Test Verification:
-  * 50 automated pytest tests passing with 100% pass rate in 0.36s:
+  * 58 automated pytest tests passing with 100% pass rate in 0.38s:
+    - `test_cost_model.py`: 8 passed (small workload CPU preference, large workload PIM offload, unsupported ops fallback, 4-term formula integrity, strided access detection, explicit unknown handling, cost enforcement)
     - `test_lexer.py`: 8 passed
     - `test_parser.py`: 9 passed
     - `test_semantic.py`: 7 passed
     - `test_ir_generator.py`: 7 passed
-    - `test_pim_mapper.py`: 8 passed (supported operations, fallbacks, array restrictions, mixed loops, defaults)
+    - `test_pim_mapper.py`: 8 passed
     - `test_compiler_orchestration.py`: 5 passed
     - `test_api.py`: 6 passed
   * Production frontend bundle compiled cleanly (`npm run build`).
@@ -424,3 +454,4 @@ Repository is ready for review demonstration.
   * Phase 3 dual-execution simulators can directly interpret the mapped instructions (`PIM_*` vs `CPU_*`),
     and Phase 4 can reuse the exact mapping decisions for modeled cycle latency and memory traffic calculations.
 ================================================================================
+

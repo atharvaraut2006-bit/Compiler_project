@@ -694,6 +694,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
+  max-width: 620px;
 }
 
 .table-controls {
@@ -722,6 +723,50 @@
 .table-filter-input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.token-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background-color: #ffffff;
+  max-width: 620px;
+}
+
+.token-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.token-table th,
+.token-table td {
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.token-table .col-idx {
+  width: 44px;
+  text-align: center;
+}
+
+.token-table .col-type {
+  width: 155px;
+}
+
+.token-table .col-val {
+  width: 220px;
+  word-break: break-all;
+}
+
+.token-table .col-line {
+  width: 65px;
+  text-align: center;
+}
+
+.token-table .col-col {
+  width: 75px;
+  text-align: center;
 }
 
 .token-badge {
@@ -1401,11 +1446,17 @@
 
 .pim-metrics-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 0.85rem;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 960px) {
+  .pim-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 580px) {
   .pim-metrics-grid {
     grid-template-columns: 1fr;
   }
@@ -1427,6 +1478,11 @@
 .metric-card-cpu {
   border-left: 3px solid var(--accent);
   background-color: #f8faff;
+}
+
+.metric-card-speedup {
+  border-left: 3px solid #8b5cf6;
+  background-color: #faf5ff;
 }
 
 .metric-header {
@@ -1460,6 +1516,15 @@
   color: var(--accent);
 }
 
+.icon-speedup {
+  background-color: #ede9fe;
+  color: #7c3aed;
+}
+
+.text-speedup {
+  color: #7c3aed;
+}
+
 .metric-label {
   font-size: 0.78rem;
   font-weight: 600;
@@ -1477,6 +1542,236 @@
   font-size: 0.72rem;
   color: var(--text-muted);
   margin-top: 0.2rem;
+}
+
+/* ==========================================================================
+   Analytical Cost Model & Candidate Evaluation Panel
+   ========================================================================== */
+.cost-model-section {
+  background-color: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.15rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.cost-model-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.cost-header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.cost-section-heading {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.strategy-pill {
+  padding: 0.2rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.badge-strategy-pim {
+  background-color: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.badge-strategy-cpu {
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.badge-strategy-transformed {
+  background-color: #faf5ff;
+  color: #7c3aed;
+  border: 1px solid #ddd6fe;
+}
+
+.btn-assumptions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.76rem;
+  padding: 0.3rem 0.65rem;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background-color: #f8fafc;
+}
+
+.btn-assumptions:hover {
+  background-color: #f1f5f9;
+  color: var(--text-primary);
+}
+
+.decision-callout {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem 0.95rem;
+  background-color: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  color: #166534;
+}
+
+.decision-callout-icon {
+  flex-shrink: 0;
+  color: #16a34a;
+  margin-top: 1px;
+}
+
+.decision-callout-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 0.15rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.decision-callout-text {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #14532d;
+}
+
+.workload-summary-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  background-color: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.workload-pill {
+  font-size: 0.76rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-secondary);
+  padding: 0.15rem 0.4rem;
+  background-color: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.workload-label {
+  color: var(--text-muted);
+}
+
+.candidate-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.candidate-table {
+  width: 100%;
+  font-size: 0.78rem;
+}
+
+.candidate-row-selected {
+  background-color: #f0fdf4 !important;
+}
+
+.candidate-row-invalid {
+  opacity: 0.6;
+}
+
+.assumptions-drawer {
+  padding: 0.95rem 1.15rem;
+  background-color: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  animation: slideDown 0.2s ease-out;
+}
+
+.assumptions-heading {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.assumptions-subheading {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.assumptions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+@media (max-width: 768px) {
+  .assumptions-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.assumption-item {
+  display: flex;
+  flex-direction: column;
+  background-color: #ffffff;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.assumption-term {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.assumption-val {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  margin: 0.15rem 0;
+}
+
+.assumption-desc {
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+}
+
+.assumptions-disclaimer {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-style: italic;
+  border-top: 1px dashed var(--border);
+  padding-top: 0.5rem;
+}
+
+.mapping-cost-note {
+  font-size: 0.72rem;
+  color: var(--accent);
+  margin-top: 0.25rem;
+  font-family: var(--font-mono);
 }
 
 .pim-filter-bar {

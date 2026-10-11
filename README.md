@@ -4,9 +4,9 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-green.svg)](https://fastapi.tiangolo.com/)
 [![React 19](https://img.shields.io/badge/React-19.0-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-6.0-purple.svg)](https://vitejs.dev/)
-[![Tests](https://img.shields.io/badge/Tests-50%20Passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-58%20Passed-brightgreen.svg)]()
 
-An educational compiler and simulation platform that accepts C source programs, transforms them into an intermediate representation (IR), identifies operations eligible for in-memory acceleration (Processing in Memory), maps them to simulated PIM instructions, and prepares execution traces for cycle-accurate CPU and PIM simulation.
+An educational compiler and simulation platform that accepts C source programs, transforms them into an intermediate representation (IR), identifies operations eligible for in-memory acceleration (Processing in Memory), evaluates research-informed analytical cost models, maps them to simulated PIM instructions, and prepares execution traces for cycle-accurate CPU and PIM simulation.
 
 ---
 
@@ -30,7 +30,7 @@ The compilation engine executes in a sequential 5-stage pipeline:
  [ IR Generator ] ──► Three-Address-Code (3AC) Intermediate Representation
        │
        ▼
- [ PIM Mapper ] ──► Centralized PIM Eligibility Analysis & Hardware Instruction Mapping
+ [ PIM Mapper & Cost Model ] ──► Static Workload Analysis & 4-Term Cost-Aware Offload Optimization
        │
        ▼
 [ Structured Results ] ──► Consumable by FastAPI backend and React developer dashboard
@@ -38,7 +38,31 @@ The compilation engine executes in a sequential 5-stage pipeline:
 
 ---
 
-## 2. Centralized PIM Instruction Eligibility Policy
+## 2. Research-Informed Cost-Aware Optimization (NMC-Opt Inspired)
+
+Rather than blindly mapping every supported instruction to in-memory hardware, the compiler implements an analytical, research-informed cost model inspired by Near-Memory Computing optimization literature (NMC-Opt).
+
+### A. Four-Term Analytical Cost Model
+For each candidate execution strategy, the compiler computes:
+$$\text{total\_cost} = \text{compute\_cost} + \text{transfer\_cost} + \text{layout\_cost} + \text{synchronization\_cost}$$
+
+- **Compute Cost ($C_{\text{comp}}$)**: Operational latency based on core speed assumptions (`CPU: 1.0 cyc/op`, `PIM: 1.2 cyc/op`).
+- **Transfer Cost ($C_{\text{xfer}}$)**: Time spent moving data across the off-chip memory bus (`2.0 B/cyc`) vs high-speed internal TSV/bank row buffers (`32.0 B/cyc`).
+- **Layout Cost ($C_{\text{layout}}$)**: Reorganization penalty for strided or non-contiguous data layouts (`0.25 cyc/B`).
+- **Synchronization Cost ($C_{\text{sync}}$)**: Host CPU kernel launch, command register setup, and barrier synchronization overhead (`60.0 cyc`).
+
+### B. Candidate Execution Strategies
+1. **`CPU_ONLY`**: Host CPU executes the workload; all array lines traverse the memory bus.
+2. **`DIRECT_PIM`**: Operations execute in-situ in DRAM row buffers; only small scalar inputs traverse the bus.
+3. **`TRANSFORMED_PIM`**: Layout-aware PIM offload accounting for in-memory data restructuring.
+
+### C. Cost-Aware Decision Logic
+- **Small Workloads** (e.g. scalar addition or small arrays): PIM launch synchronization overhead (60 cycles) exceeds compute savings. The cost model intelligently assigns execution to the **Host CPU**.
+- **Large Memory-Bound Workloads** (e.g. 100-element array accumulation): Eliminating hundreds of bytes of memory bus traffic far outweighs the launch overhead, yielding an analytical speedup (> 1.3×) and selecting **In-Memory PIM Offload**.
+
+---
+
+## 3. Centralized PIM Instruction Eligibility Policy
 
 The project defines an explicit, centralized architectural policy for mapping intermediate operations to simulated Processing in Memory (PIM) units versus host CPU fallback.
 
@@ -76,7 +100,7 @@ For loops and iterative workloads:
 
 ---
 
-## 3. Supported C Language Subset
+## 4. Supported C Language Subset
 
 ### A. Supported Constructs
 - **Data Types**: `int` (32-bit signed scalar and 1D fixed-size integer arrays).
@@ -108,7 +132,7 @@ For loops and iterative workloads:
 
 ---
 
-## 4. Running the Application Locally
+## 5. Running the Application Locally
 
 ### Prerequisites
 - Python 3.10+ (Tested on Python 3.12)
@@ -134,14 +158,15 @@ npm run dev
 
 ---
 
-## 5. Automated Tests
+## 6. Automated Tests
 
 Execute the automated test suite with pytest:
 ```bash
 python -m pytest backend/tests -v
 ```
 
-All 50 unit and integration tests pass in ~0.36s:
+All 58 unit and integration tests pass in ~0.38s:
+- `test_cost_model.py` (8 tests): Small workload CPU preference, large memory-bound PIM offload, unsupported operation fallback, 4-term formula mathematical integrity, strided pattern detection, layout transformation evaluation, explicit unknown handling, cost enforcement.
 - `test_lexer.py` (8 tests): Token identification, line/col tracking, comment stripping, invalid character detection.
 - `test_parser.py` (9 tests): Precedence climbing, array indexing, loop structures, syntax error diagnostics.
 - `test_semantic.py` (7 tests): Scoped symbol table, undeclared variables, duplicate declarations, bounds checking.
@@ -152,5 +177,5 @@ All 50 unit and integration tests pass in ~0.36s:
 
 ---
 
-## 6. Handover Record
-The persistent handover file [`change`](./change) is maintained in the project root. It documents the complete roadmap, completed features, centralized policies, test verification results, and preparation for CPU/PIM cycle simulation.
+## 7. Handover Record
+The persistent handover file [`change`](./change) is maintained in the project root. It documents the complete roadmap, completed features, centralized policies, research-informed cost model formulas, test verification results, and preparation for CPU/PIM cycle simulation.

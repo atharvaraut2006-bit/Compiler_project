@@ -3,8 +3,16 @@ Centralized PIM Instruction Eligibility Policy and Mapping Module.
 Defines explicit eligibility rules for simulated in-memory operations,
 routes unsupported or control operations to CPU fallback, and produces
 educational mapping rationales and memory movement metadata.
+
+Extended with Research-Informed Analytical Cost Modeling (NMC-Opt inspired):
+- Static workload analysis pass (op counts, arrays read/written, loop bounds, access patterns)
+- Candidate strategy evaluation (CPU_ONLY, DIRECT_PIM, TRANSFORMED_PIM)
+- 4-term analytical cost breakdown:
+    total_cost = compute_cost + transfer_cost + layout_cost + synchronization_cost
+- Cost-aware offloading decision with explainable rationales.
 """
 from typing import List, Dict, Any, Optional
+from .cost_model import WorkloadAnalyzer, PIMCostModel, CostParameters, WorkloadProfile
 
 
 class PIMPolicy:
@@ -56,24 +64,62 @@ class PIMPolicy:
 
 class PIMMapper:
     """
-    Centralized mapping module enforcing PIM eligibility policies.
+    Centralized mapping module enforcing PIM eligibility policies and analytical cost optimization.
     Every mapping decision includes target assignment (PIM or CPU),
     mapped instruction mnemonic, memory metadata, and a detailed reason.
     """
-    def __init__(self, policy: Optional[PIMPolicy] = None):
+    def __init__(self, policy: Optional[PIMPolicy] = None, cost_params: Optional[CostParameters] = None):
         self.policy = policy or PIMPolicy()
+        self.analyzer = WorkloadAnalyzer()
+        self.cost_model = PIMCostModel(cost_params)
 
-    def map_instructions(self, ir_instructions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def map_instructions(
+        self,
+        ir_instructions: List[Dict[str, Any]],
+        ast: Optional[Any] = None,
+        enforce_cost: bool = False
+    ) -> Dict[str, Any]:
         """
         Maps an ordered sequence of IR instructions into simulated PIM or CPU operations.
-        Returns mapped instructions, summary metrics, and policy details.
+        Executes static workload analysis pass and evaluates 4-term analytical cost model.
+        Returns mapped instructions, summary metrics, and policy/optimization details.
         """
+        # 1. Static workload analysis pass
+        profile = self.analyzer.analyze(ir_instructions, ast)
+
+        # 2. Four-term analytical cost model evaluation
+        optimization = self.cost_model.evaluate_candidates(profile)
+        selected_strategy = optimization.get("selected_strategy", "CPU_ONLY")
+
         mapped_list = []
         pim_count = 0
         cpu_count = 0
 
         for instr in ir_instructions:
             mapped_item = self._evaluate_instruction(instr)
+
+            # Determine cost-aware optimal target
+            is_structurally_pim = mapped_item["is_pim"]
+            if selected_strategy in ("DIRECT_PIM", "TRANSFORMED_PIM") and is_structurally_pim:
+                optimal_target = "PIM"
+                cost_justification = f"Cost model selected {selected_strategy}: in-memory execution saves bus transfer."
+            else:
+                optimal_target = "CPU"
+                if is_structurally_pim:
+                    cost_justification = (
+                        f"Allocated to CPU by cost model: {optimization.get('decision_rationale', 'Overhead exceeds compute savings')}"
+                    )
+                else:
+                    cost_justification = "Allocated to CPU: Operation requires CPU host control or ALU hardware."
+
+            mapped_item["cost_strategy"] = selected_strategy
+            mapped_item["optimal_target"] = optimal_target
+            mapped_item["cost_justification"] = cost_justification
+
+            if enforce_cost:
+                mapped_item["target"] = optimal_target
+                mapped_item["is_pim"] = (optimal_target == "PIM")
+
             mapped_list.append(mapped_item)
             if mapped_item["target"] == "PIM":
                 pim_count += 1
@@ -89,8 +135,11 @@ class PIMMapper:
             "summary": {
                 "total": len(ir_instructions),
                 "pim_allocated": pim_count,
-                "cpu_fallback": cpu_count
-            }
+                "cpu_fallback": cpu_count,
+                "optimal_strategy": selected_strategy,
+                "estimated_speedup": optimization.get("speedup_estimate", 1.0)
+            },
+            "optimization": optimization
         }
 
     def _evaluate_instruction(self, instr: Dict[str, Any]) -> Dict[str, Any]:
@@ -119,9 +168,8 @@ class PIMMapper:
                     "operation_type": "memory_load",
                     "data_type": "int",
                     "memory_region": "array_buffer",
-                    "source_var": f"{arg1}[{arg2}]",
-                    "dest_var": dest,
-                    "bytes_transferred": 0  # In-situ read eliminates bus traffic
+                    "bytes_transferred": metadata.get("bytes_transferred", 4),
+                    "array_name": arg1
                 },
                 "formatted": f"PIM_LOAD {dest}, {arg1}[{arg2}]"
             }
@@ -138,93 +186,20 @@ class PIMMapper:
                 "arg1": arg1,
                 "arg2": arg2,
                 "reason": (
-                    f"Array-indexed writeback '{dest}[{arg1}]' stores directly into the local memory partition; "
-                    "eligible for PIM in-situ store without external memory bus traffic."
+                    f"Array-indexed write to '{dest}[{arg1}]' writes directly into the local DRAM row buffer; "
+                    "eligible for PIM in-situ store without cache-flush or bus roundtrip."
                 ),
                 "memory_metadata": {
                     "operation_type": "memory_store",
                     "data_type": "int",
                     "memory_region": "array_buffer",
-                    "source_var": arg2,
-                    "dest_var": f"{dest}[{arg1}]",
-                    "bytes_transferred": 0  # In-situ writeback eliminates bus traffic
+                    "bytes_transferred": metadata.get("bytes_transferred", 4),
+                    "array_name": dest
                 },
                 "formatted": f"PIM_STORE {dest}[{arg1}], {arg2}"
             }
 
-        # Rule 3: PIM-Eligible Arithmetic (ADD, SUB, MUL)
-        if opcode in self.policy.PIM_ARITHMETIC:
-            mapped_op = self.policy.PIM_ARITHMETIC[opcode]
-            return {
-                "ir_id": instr.get("id"),
-                "ir_opcode": opcode,
-                "target": "PIM",
-                "mapped_instruction": mapped_op,
-                "is_pim": True,
-                "dest": dest,
-                "arg1": arg1,
-                "arg2": arg2,
-                "reason": (
-                    f"Integer arithmetic '{opcode}' is natively supported by the simulated in-memory ALU banks, "
-                    "allowing local computation adjacent to memory cells."
-                ),
-                "memory_metadata": {
-                    "operation_type": "arithmetic",
-                    "data_type": "int",
-                    "memory_region": "pim_registers",
-                    "bytes_transferred": 0
-                },
-                "formatted": f"{mapped_op} {dest}, {arg1}, {arg2}"
-            }
-
-        # Rule 4: PIM-Eligible Comparisons (COMPARE_LT, LE, GT, GE, EQ, NE)
-        if opcode in self.policy.PIM_COMPARISONS:
-            return {
-                "ir_id": instr.get("id"),
-                "ir_opcode": opcode,
-                "target": "PIM",
-                "mapped_instruction": "PIM_COMPARE",
-                "is_pim": True,
-                "dest": dest,
-                "arg1": arg1,
-                "arg2": arg2,
-                "reason": (
-                    f"Comparison '{opcode}' is evaluated locally by the simulated in-memory comparator circuit."
-                ),
-                "memory_metadata": {
-                    "operation_type": "comparison",
-                    "data_type": "int",
-                    "memory_region": "pim_registers",
-                    "bytes_transferred": 0
-                },
-                "formatted": f"PIM_COMPARE {dest}, {arg1}, {arg2} ({opcode})"
-            }
-
-        # Rule 5: CPU-Fallback Arithmetic (DIV, MOD)
-        if opcode in ("DIV", "MOD"):
-            return {
-                "ir_id": instr.get("id"),
-                "ir_opcode": opcode,
-                "target": "CPU",
-                "mapped_instruction": f"CPU_{opcode}",
-                "is_pim": False,
-                "dest": dest,
-                "arg1": arg1,
-                "arg2": arg2,
-                "reason": (
-                    f"Integer '{opcode}' requires multi-cycle iterative divider hardware that is not implemented "
-                    "in the simulated in-memory processing units; routed to CPU fallback."
-                ),
-                "memory_metadata": {
-                    "operation_type": "arithmetic",
-                    "data_type": "int",
-                    "memory_region": "host_cpu",
-                    "bytes_transferred": 0
-                },
-                "formatted": f"CPU_{opcode} {dest}, {arg1}, {arg2}"
-            }
-
-        # Rule 6: Scalar Memory Access (LOAD, STORE) -> CPU Fallback
+        # Rule 3: Scalar Memory Access (LOAD / STORE) -> CPU Fallback
         if opcode == "LOAD":
             return {
                 "ir_id": instr.get("id"),
@@ -236,15 +211,12 @@ class PIMMapper:
                 "arg1": arg1,
                 "arg2": None,
                 "reason": (
-                    f"Scalar variable '{arg1}' resides in the host CPU stack frame; "
-                    "accessed via host memory controller, not eligible for PIM row buffer mapping."
+                    f"Scalar variable '{arg1}' resides in the host CPU activation record / stack frame; "
+                    "loaded via host CPU L1/L2 cache rather than in-memory PIM bank logic."
                 ),
                 "memory_metadata": {
-                    "operation_type": "memory_load",
-                    "data_type": "int",
+                    "operation_type": "scalar_load",
                     "memory_region": "stack",
-                    "source_var": arg1,
-                    "dest_var": dest,
                     "bytes_transferred": 4
                 },
                 "formatted": f"CPU_LOAD {dest}, {arg1}"
@@ -261,21 +233,18 @@ class PIMMapper:
                 "arg1": arg1,
                 "arg2": None,
                 "reason": (
-                    f"Scalar variable '{dest}' resides in host CPU stack space; "
-                    "stored by host CPU sequencer."
+                    f"Scalar variable '{dest}' resides on the CPU stack frame; "
+                    "stored by host CPU registers to preserve function call context."
                 ),
                 "memory_metadata": {
-                    "operation_type": "memory_store",
-                    "data_type": "int",
+                    "operation_type": "scalar_store",
                     "memory_region": "stack",
-                    "source_var": arg1,
-                    "dest_var": dest,
                     "bytes_transferred": 4
                 },
                 "formatted": f"CPU_STORE {dest}, {arg1}"
             }
 
-        # Rule 7: Immediate Constants (CONST) -> CPU Fallback
+        # Rule 4: Immediate Constant Loading (CONST) -> CPU Fallback
         if opcode == "CONST":
             return {
                 "ir_id": instr.get("id"),
@@ -286,17 +255,93 @@ class PIMMapper:
                 "dest": dest,
                 "arg1": arg1,
                 "arg2": None,
-                "reason": f"Immediate constant '{arg1}' is encoded directly into the host CPU instruction stream.",
+                "reason": (
+                    f"Immediate literal value '{arg1}' is encoded directly in the CPU instruction stream "
+                    "as an immediate operand, requiring no DRAM row-buffer allocation."
+                ),
                 "memory_metadata": {
-                    "operation_type": "immediate",
-                    "data_type": "int",
-                    "memory_region": "host_registers",
+                    "operation_type": "immediate_load",
+                    "memory_region": "register",
                     "bytes_transferred": 0
                 },
                 "formatted": f"CPU_CONST {dest}, {arg1}"
             }
 
-        # Rule 8: Control Flow (JUMP, BRANCH, LABEL, RETURN) -> CPU Fallback
+        # Rule 5: Supported Arithmetic Operations (ADD, SUB, MUL) -> PIM
+        if opcode in self.policy.PIM_ARITHMETIC:
+            pim_op = self.policy.PIM_ARITHMETIC[opcode]
+            return {
+                "ir_id": instr.get("id"),
+                "ir_opcode": opcode,
+                "target": "PIM",
+                "mapped_instruction": pim_op,
+                "is_pim": True,
+                "dest": dest,
+                "arg1": arg1,
+                "arg2": arg2,
+                "reason": (
+                    f"Arithmetic '{opcode}' matches simulated PIM ALU capability; "
+                    f"mapped to near-memory instruction '{pim_op}' for in-situ execution."
+                ),
+                "memory_metadata": {
+                    "operation_type": "arithmetic",
+                    "operator": opcode,
+                    "memory_region": "pim_alu",
+                    "bytes_transferred": 0
+                },
+                "formatted": f"{pim_op} {dest}, {arg1}, {arg2}"
+            }
+
+        # Rule 6: Unsupported Arithmetic Operations (DIV, MOD) -> CPU Fallback
+        if opcode in ("DIV", "MOD"):
+            cpu_op = f"CPU_{opcode}"
+            return {
+                "ir_id": instr.get("id"),
+                "ir_opcode": opcode,
+                "target": "CPU",
+                "mapped_instruction": cpu_op,
+                "is_pim": False,
+                "dest": dest,
+                "arg1": arg1,
+                "arg2": arg2,
+                "reason": (
+                    f"Hardware division/modulo '{opcode}' is not supported by the lightweight in-memory PIM ALU "
+                    "(area and power constraints); routed to host CPU divider hardware fallback."
+                ),
+                "memory_metadata": {
+                    "operation_type": "fallback_arithmetic",
+                    "operator": opcode,
+                    "memory_region": "host_alu",
+                    "bytes_transferred": 0
+                },
+                "formatted": f"{cpu_op} {dest}, {arg1}, {arg2}"
+            }
+
+        # Rule 7: Comparisons (COMPARE_LT, LE, GT, GE, EQ, NE) -> PIM
+        if opcode in self.policy.PIM_COMPARISONS:
+            return {
+                "ir_id": instr.get("id"),
+                "ir_opcode": opcode,
+                "target": "PIM",
+                "mapped_instruction": "PIM_COMPARE",
+                "is_pim": True,
+                "dest": dest,
+                "arg1": arg1,
+                "arg2": arg2,
+                "reason": (
+                    f"Relational condition '{opcode}' evaluates via in-memory PIM comparator circuit; "
+                    "produces boolean condition flag locally within memory bank."
+                ),
+                "memory_metadata": {
+                    "operation_type": "comparison",
+                    "operator": opcode,
+                    "memory_region": "pim_comparator",
+                    "bytes_transferred": 0
+                },
+                "formatted": f"PIM_COMPARE {dest}, {arg1}, {arg2}"
+            }
+
+        # Rule 8: Control Flow Operations (JUMP, BRANCH, LABEL, RETURN) -> CPU Fallback
         if opcode in ("JUMP", "BRANCH", "LABEL", "RETURN"):
             return {
                 "ir_id": instr.get("id"),

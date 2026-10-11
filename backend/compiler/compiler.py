@@ -171,10 +171,10 @@ class Compiler:
         # Stage 5: PIM Eligibility Analysis & Instruction Mapping
         try:
             pim_mapper = PIMMapper()
-            mapping_res = pim_mapper.map_instructions(ir_res["instructions"])
+            mapping_res = pim_mapper.map_instructions(ir_res["instructions"], ast=ast)
             stage_pim = {
                 "status": "success",
-                "message": f"Mapped {mapping_res['pim_count']} PIM / {mapping_res['cpu_count']} CPU instructions."
+                "message": f"Mapped {mapping_res['pim_count']} PIM / {mapping_res['cpu_count']} CPU instructions. Optimal strategy: {mapping_res.get('optimization', {}).get('selected_strategy', 'N/A')}."
             }
         except Exception as e:
             return {
@@ -193,6 +193,7 @@ class Compiler:
                 "diagnostics": semantic_res["diagnostics"] + [{"severity": "error", "message": f"PIM Mapping failed: {str(e)}", "line": 1, "column": 1}],
                 "ir": ir_res,
                 "mapping": empty_mapping,
+                "optimization": {},
                 "supported_language": self.SUPPORTED_SUBSET
             }
 
@@ -213,5 +214,6 @@ class Compiler:
             "diagnostics": semantic_res["diagnostics"],
             "ir": ir_res,
             "mapping": mapping_res,
+            "optimization": mapping_res.get("optimization", {}),
             "supported_language": self.SUPPORTED_SUBSET
         }
