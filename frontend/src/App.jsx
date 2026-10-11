@@ -105,7 +105,7 @@ export const App = () => {
         <div className="header-right">
           <div className={`status-pill ${backendOnline === true ? 'pill-online' : backendOnline === false ? 'pill-offline' : 'pill-checking'}`}>
             <span className="status-dot"></span>
-            Backend: {backendOnline === true ? 'FastAPI Connected (Port 8000)' : backendOnline === false ? 'Offline' : 'Connecting...'}
+            Compiler Engine: {backendOnline === true ? 'Online' : backendOnline === false ? 'Offline' : 'Connecting...'}
           </div>
           <button
             className="btn btn-outline btn-sm"

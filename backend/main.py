@@ -50,9 +50,9 @@ class CompileRequest(BaseModel):
 EXAMPLES = [
     {
         "id": "array_summation_main",
-        "name": "1. Valid Array Summation (Demo Program)",
+        "name": "1. Array Reduction (Summation)",
         "category": "valid",
-        "description": "The required college review demonstration program with int main(), array declaration, and loop accumulation.",
+        "description": "Computes sum of array elements using a for-loop accumulator with int main().",
         "source_code": """int main() {
     int arr[4] = {10, 20, 30, 40};
     int sum = 0;

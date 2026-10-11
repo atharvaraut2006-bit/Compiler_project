@@ -6,7 +6,7 @@ from backend.compiler.compiler import Compiler
 
 def test_section_11_required_demo_program():
     """
-    Test the exact required college review demonstration program from Section 11:
+    Test the array summation workload with int main():
     int main() {
         int arr[4] = {10, 20, 30, 40};
         int sum = 0;
