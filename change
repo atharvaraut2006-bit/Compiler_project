@@ -438,18 +438,26 @@ Repository is ready for review demonstration.
     - Added Workload Profile summary bar and collapsible Simulation Assumptions legend.
     - Mapped instructions display both structural capability and cost-optimal assignment.
 
-  * Memory Footprint Derivation & Loop Boundary Isolation:
-    - Resolved the "80 bytes" memory footprint query:
-      * In the initial unpartitioned calculation, 16 bytes of array initialization (4 elements * 4 bytes)
-        were globally multiplied by the loop count (4), producing 64 bytes written + 16 bytes read in loop = 80 bytes.
-      * Refined WorkloadAnalyzer with explicit loop-boundary tracking: startup array initialization
-        is counted once (16 bytes written), while loop streaming reads are scaled by loop iterations (16 bytes read),
-        producing the exact dynamic data movement of 32 bytes (or 16 bytes static declared array footprint).
+  * Mathematical Alignment & Formula Clarification (Faculty & Reviewer Q&A):
+    - Resolved Compute Ops vs Cycles Consistency:
+      * Static loop body operations = 3 ops (1 comparison `i < 4` + 1 array addition `sum + arr[i]` + 1 counter update `i++`).
+      * Total Dynamic Executed Operations = 3 ops/iter * 4 iterations = 12 ops.
+      * CPU Compute: 12 ops * 1.0 cyc/op = 12.0 cycles.
+      * PIM Compute: 12 ops * 1.2 cyc/op = 14.4 cycles.
+      * UI and WorkloadProfile now explicitly display: `Dynamic Ops: 12 (3 ops/iter * 4 iter)`.
+    - Resolved Memory Footprint & Bus Traffic:
+      * Declared Variable Storage: `int arr[4]` (16 B) + `int sum` (4 B) + `int i` (4 B) = 24 bytes.
+      * Dynamic Bus Traffic: 16 B startup array initialization + 16 B loop streaming reads = 32 bytes.
+      * (Previous 80 B was caused by multiplying 16 B initialization by the 4 loop iterations = 64 B + 16 B = 80 B).
+    - Resolved CPU and PIM Transfer Cost Formulations:
+      * CPU Transfer: 32 bytes dynamic bus traffic / 2.0 B/cyc = 16.0 cycles.
+      * PIM Transfer: 8.0 bytes PIM Kernel Command Descriptor (4B base pointer + 4B iteration bound) / 2.0 B/cyc = 4.0 cycles.
+      * PIM Launch Sync Overhead: 60.0 cycles.
+      * Total Costs: CPU_ONLY = 12.0 + 16.0 = 28.0 cycles | DIRECT_PIM = 14.4 + 4.0 + 60.0 = 78.4 cycles.
+      * Winner: CPU_ONLY (28.0 < 78.4 cycles).
   * Publication-Quality PDF Cost Model Specification:
-    - Created `generate_pdf.py` using ReportLab to render `Compiler_for_PIM_Cost_Model_Specification.pdf`.
-    - Contains master 4-term equations, term definitions, architectural parameters table,
-      candidate strategies selection policy, memory footprint derivation, and numerical case studies.
-    - Integrated direct download button in PIMMappingViewer and added `GET /api/cost-model-pdf` endpoint.
+    - Updated `generate_pdf.py` and regenerated `Compiler_for_PIM_Cost_Model_Specification.pdf` and `docs/Compiler_for_PIM_Cost_Model_Specification.pdf`.
+    - Includes master 4-term equations, parameter definitions, reviewer Q&A derivations, and step-by-step case studies.
 
 - Automated Test Verification:
   * 58 automated pytest tests passing with 100% pass rate in 0.35s:

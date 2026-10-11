@@ -164,12 +164,19 @@ export const PIMMappingViewer = ({ mapping }) => {
         {/* Workload Profile Quick Specs */}
         <div className="workload-summary-bar">
           <div className="workload-pill">
-            <span className="workload-label">Compute Ops:</span>
-            <strong>{workload.total_computational_ops ?? (workload.arithmetic_op_count + workload.comparison_op_count)}</strong>
+            <span className="workload-label">Dynamic Ops:</span>
+            <strong>
+              {workload.dynamic_executed_ops ?? workload.total_computational_ops}
+              {workload.loop_iterations ? ` (${workload.static_kernel_ops || 3} ops/iter × ${workload.loop_iterations} iter)` : ''}
+            </strong>
           </div>
           <div className="workload-pill">
-            <span className="workload-label">Memory Footprint:</span>
-            <strong>{workload.total_memory_bytes ?? 0} bytes</strong>
+            <span className="workload-label">Data Traffic:</span>
+            <strong>{workload.dynamic_bus_bytes ?? workload.total_memory_bytes ?? 0} B (Bus Movement)</strong>
+          </div>
+          <div className="workload-pill">
+            <span className="workload-label">Declared Storage:</span>
+            <strong>{workload.declared_variable_bytes ?? 24} B (Variables)</strong>
           </div>
           <div className="workload-pill">
             <span className="workload-label">Loop Iterations:</span>
@@ -280,21 +287,21 @@ export const PIMMappingViewer = ({ mapping }) => {
                 <span className="assumption-val">
                   {parameters.cpu_cycles_per_arithmetic_op ?? 1.0} cycles / op
                 </span>
-                <span className="assumption-desc">Superscalar pipelined core</span>
+                <span className="assumption-desc">Superscalar core (Ops × 1.0 cyc)</span>
               </div>
               <div className="assumption-item">
                 <span className="assumption-term">PIM Compute Speed:</span>
                 <span className="assumption-val">
                   {parameters.pim_cycles_per_arithmetic_op ?? 1.2} cycles / op
                 </span>
-                <span className="assumption-desc">In-memory ALU within DRAM power envelope</span>
+                <span className="assumption-desc">In-memory ALU (Ops × 1.2 cyc)</span>
               </div>
               <div className="assumption-item">
                 <span className="assumption-term">Host Bus Bandwidth:</span>
                 <span className="assumption-val">
                   {parameters.bus_bandwidth_bytes_per_cycle ?? 2.0} bytes / cycle
                 </span>
-                <span className="assumption-desc">Off-chip DDR memory bus channel</span>
+                <span className="assumption-desc">Off-chip memory bus channel</span>
               </div>
               <div className="assumption-item">
                 <span className="assumption-term">PIM Bank Bandwidth:</span>
@@ -302,6 +309,13 @@ export const PIMMappingViewer = ({ mapping }) => {
                   {parameters.pim_internal_bandwidth_bytes_per_cycle ?? 32.0} bytes / cycle
                 </span>
                 <span className="assumption-desc">Internal TSV / row buffer bandwidth</span>
+              </div>
+              <div className="assumption-item">
+                <span className="assumption-term">PIM Command Descriptor:</span>
+                <span className="assumption-val">
+                  {parameters.pim_kernel_dispatch_bytes ?? 8.0} bytes
+                </span>
+                <span className="assumption-desc">Base ptr (4B) + bound (4B) → 4.0 cyc</span>
               </div>
               <div className="assumption-item">
                 <span className="assumption-term">Launch & Sync Overhead:</span>

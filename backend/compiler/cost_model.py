@@ -27,7 +27,8 @@ class CostParameters:
         pim_internal_bandwidth_bytes_per_cycle: float = 32.0,
         pim_launch_sync_overhead_cycles: float = 60.0,
         layout_transform_cycles_per_byte: float = 0.25,
-        word_size_bytes: int = 4
+        word_size_bytes: int = 4,
+        pim_kernel_dispatch_bytes: float = 8.0
     ):
         # 1. Compute speed assumptions:
         # Host CPU has pipelined, high-frequency superscalar ALUs.
@@ -52,6 +53,11 @@ class CostParameters:
         self.layout_transform_cycles_per_byte = layout_transform_cycles_per_byte
         self.word_size_bytes = word_size_bytes
 
+        # 5. PIM Kernel Dispatch Payload:
+        # Size of command descriptor sent from host CPU over bus to initiate PIM kernel:
+        # 2 words (8 bytes): array base pointer (4B) + iteration count/bound (4B).
+        self.pim_kernel_dispatch_bytes = pim_kernel_dispatch_bytes
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "cpu_cycles_per_arithmetic_op": self.cpu_cycles_per_arithmetic_op,
@@ -61,6 +67,7 @@ class CostParameters:
             "pim_launch_sync_overhead_cycles": self.pim_launch_sync_overhead_cycles,
             "layout_transform_cycles_per_byte": self.layout_transform_cycles_per_byte,
             "word_size_bytes": self.word_size_bytes,
+            "pim_kernel_dispatch_bytes": self.pim_kernel_dispatch_bytes,
             "note": "Configurable simulation parameters; representative values based on NMC-Opt literature."
         }
 
@@ -68,15 +75,20 @@ class CostParameters:
 class WorkloadProfile:
     """
     Extracted static workload properties from AST and IR analysis.
-    Explicitly represents unknown quantities as None instead of inventing values.
+    Explicitly distinguishes between static kernel operations and dynamic executed operations,
+    and between declared variable memory footprint and dynamic memory bus traffic.
     """
     def __init__(self):
+        self.static_kernel_ops: int = 0
+        self.dynamic_executed_ops: int = 0
         self.arithmetic_op_count: int = 0
         self.comparison_op_count: int = 0
         self.arrays_read: List[str] = []
         self.arrays_written: List[str] = []
         self.bytes_read: int = 0
         self.bytes_written: int = 0
+        self.dynamic_bus_bytes: int = 0
+        self.declared_variable_bytes: int = 0
         self.total_memory_bytes: int = 0
         self.loop_iterations: Optional[int] = None
         self.access_pattern: str = "scalar_only"  # 'sequential', 'strided', 'scalar_only', 'unknown'
@@ -89,13 +101,17 @@ class WorkloadProfile:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "static_kernel_ops": self.static_kernel_ops,
+            "dynamic_executed_ops": self.dynamic_executed_ops,
             "arithmetic_op_count": self.arithmetic_op_count,
             "comparison_op_count": self.comparison_op_count,
-            "total_computational_ops": self.arithmetic_op_count + self.comparison_op_count,
+            "total_computational_ops": self.dynamic_executed_ops,
             "arrays_read": self.arrays_read,
             "arrays_written": self.arrays_written,
             "bytes_read": self.bytes_read,
             "bytes_written": self.bytes_written,
+            "dynamic_bus_bytes": self.dynamic_bus_bytes,
+            "declared_variable_bytes": self.declared_variable_bytes,
             "total_memory_bytes": self.total_memory_bytes,
             "loop_iterations": self.loop_iterations,
             "access_pattern": self.access_pattern,
@@ -111,31 +127,37 @@ class WorkloadProfile:
 class WorkloadAnalyzer:
     """
     Static analysis pass extracting workload characteristics from AST and IR instructions.
+    Accurately isolates one-time startup initializations from loop-body iterations.
     """
     def analyze(self, ir_instructions: List[Dict[str, Any]], ast: Optional[Any] = None) -> WorkloadProfile:
         profile = WorkloadProfile()
 
-        # 1. Statically determine loop iterations from AST if present
+        # 1. Statically determine loop iterations and declared variable bytes from AST
         if ast:
             profile.loop_iterations = self._extract_loop_iterations(ast)
+            profile.declared_variable_bytes = self._extract_declared_bytes(ast)
 
-        # 2. Analyze IR instructions
+        # 2. Analyze IR instructions with loop-boundary tracking
         arrays_read_set = set()
         arrays_written_set = set()
-        bytes_read = 0
-        bytes_written = 0
         unsupported = set()
         has_strided_access = False
         has_indexed_access = False
 
-        # Variable definitions for dependency analysis and index tracking
         definitions = set()
         def_ops = {}
         raw_deps = 0
 
-        # Track loop boundary state
-        in_loop = False
-        loop_body_label = None
+        # Identify loop intervals by back-edges (JUMP targeting earlier LABEL)
+        label_map = {}
+        loop_ranges = []
+        for idx, instr in enumerate(ir_instructions):
+            op = instr.get("opcode", "")
+            arg1 = instr.get("arg1")
+            if op == "LABEL" and arg1:
+                label_map[arg1] = idx
+            elif op == "JUMP" and arg1 in label_map:
+                loop_ranges.append((label_map[arg1], idx))
 
         outside_bytes_read = 0
         outside_bytes_written = 0
@@ -147,22 +169,15 @@ class WorkloadAnalyzer:
         outside_cmp_ops = 0
         loop_cmp_ops = 0
 
-        for instr in ir_instructions:
+        for idx, instr in enumerate(ir_instructions):
             op = instr.get("opcode", "")
             dest = instr.get("dest")
             arg1 = instr.get("arg1")
             arg2 = instr.get("arg2")
-            arg3 = instr.get("arg3")
 
-            # Loop boundary tracking
-            if op == "BRANCH" and arg2 and arg3:
-                loop_body_label = arg2
-            elif op == "LABEL" and arg1 == loop_body_label:
-                in_loop = True
-            elif op == "JUMP" and in_loop:
-                in_loop = False
+            in_loop = any(start <= idx <= end for start, end in loop_ranges)
 
-            # Dependency check (Read-After-Write)
+            # Dependency tracking
             if arg1 and arg1 in definitions:
                 raw_deps += 1
             if arg2 and arg2 in definitions:
@@ -197,7 +212,6 @@ class WorkloadAnalyzer:
                     loop_bytes_read += 4
                 else:
                     outside_bytes_read += 4
-                # Check for strided pattern via direct text or operand definition (e.g. index generated by MUL)
                 if arg2:
                     if ("*" in str(arg2) or "+" in str(arg2)) or (arg2 in def_ops and def_ops[arg2] in ("MUL", "DIV")):
                         has_strided_access = True
@@ -213,7 +227,7 @@ class WorkloadAnalyzer:
                     if ("*" in str(arg1) or "+" in str(arg1)) or (arg1 in def_ops and def_ops[arg1] in ("MUL", "DIV")):
                         has_strided_access = True
 
-        # Check AST for strided ArrayAccess if available
+        # Check AST for strided access pattern
         if ast and not has_strided_access:
             try:
                 from .ast_nodes import ArrayAccess, BinaryOp
@@ -242,15 +256,21 @@ class WorkloadAnalyzer:
         profile.unsupported_op_list = sorted(list(unsupported))
         profile.raw_dependencies_count = raw_deps
 
-        # Scale loop operations by statically determinable loop iterations if available
         iter_multiplier = profile.loop_iterations if profile.loop_iterations and profile.loop_iterations > 0 else 1
 
+        profile.static_kernel_ops = outside_arith_ops + outside_cmp_ops + loop_arith_ops + loop_cmp_ops
+        profile.dynamic_executed_ops = outside_arith_ops + outside_cmp_ops + ((loop_arith_ops + loop_cmp_ops) * iter_multiplier)
         profile.arithmetic_op_count = outside_arith_ops + (loop_arith_ops * iter_multiplier)
         profile.comparison_op_count = outside_cmp_ops + (loop_cmp_ops * iter_multiplier)
 
         profile.bytes_read = outside_bytes_read + (loop_bytes_read * iter_multiplier)
         profile.bytes_written = outside_bytes_written + (loop_bytes_written * iter_multiplier)
-        profile.total_memory_bytes = profile.bytes_read + profile.bytes_written
+        profile.dynamic_bus_bytes = profile.bytes_read + profile.bytes_written
+        profile.total_memory_bytes = profile.dynamic_bus_bytes
+
+        # If declared bytes couldn't be extracted from AST, fall back to array memory
+        if profile.declared_variable_bytes == 0:
+            profile.declared_variable_bytes = profile.total_memory_bytes
 
         # Access pattern classification
         if has_strided_access:
@@ -263,18 +283,40 @@ class WorkloadAnalyzer:
             profile.access_pattern = "scalar_only"
             profile.requires_layout_transform = False
 
-        # Hardware eligibility check
-        # Must have no unsupported ops and must have array data in memory to justify in-memory offload
         if not profile.has_unsupported_ops and has_indexed_access:
             profile.is_pim_hardware_eligible = True
         else:
             profile.is_pim_hardware_eligible = False
 
-        # Detect data reuse (e.g. read array and also write it or multiple reads)
-        if len(arrays_read_set.intersection(arrays_written_set)) > 0 or bytes_read > 8:
+        if len(arrays_read_set.intersection(arrays_written_set)) > 0 or profile.bytes_read > 8:
             profile.data_reuse_detected = True
 
         return profile
+
+    def _extract_declared_bytes(self, ast: Any) -> int:
+        """Calculates total bytes occupied by declared variables and arrays in C source."""
+        total = 0
+        try:
+            from .ast_nodes import VarDecl, ArrayDecl
+            def visit(n):
+                nonlocal total
+                if n is None:
+                    return
+                if isinstance(n, VarDecl):
+                    total += 4
+                elif isinstance(n, ArrayDecl):
+                    total += n.size * 4
+                for field in ("declarations", "statements", "body", "then_branch", "else_branch"):
+                    val = getattr(n, field, None)
+                    if isinstance(val, list):
+                        for item in val:
+                            visit(item)
+                    elif val is not None:
+                        visit(val)
+            visit(ast)
+        except Exception:
+            pass
+        return total
 
     def _extract_loop_iterations(self, ast: Any) -> Optional[int]:
         """
@@ -298,7 +340,6 @@ class WorkloadAnalyzer:
                         if res is not None:
                             return res
                 elif isinstance(node, ForLoop):
-                    # Inspect condition: e.g. i < 100 or i <= 99
                     start_val = 0
                     if isinstance(node.init, VarDecl) and isinstance(node.init.initializer, IntLiteral):
                         start_val = node.init.initializer.value
@@ -376,14 +417,14 @@ class PIMCostModel:
         self.params = params or CostParameters()
 
     def evaluate_candidates(self, profile: WorkloadProfile) -> Dict[str, Any]:
-        effective_ops = profile.arithmetic_op_count + profile.comparison_op_count
+        effective_ops = profile.dynamic_executed_ops
 
         # -------------------------------------------------------------
         # Candidate 1: CPU_ONLY
         # -------------------------------------------------------------
-        # Host CPU executes all operations. Must transfer all array data across memory bus.
+        # Host CPU executes all operations. Must transfer dynamic bus bytes across memory bus.
         cpu_compute = effective_ops * self.params.cpu_cycles_per_arithmetic_op
-        cpu_transfer = profile.total_memory_bytes / self.params.bus_bandwidth_bytes_per_cycle
+        cpu_transfer = profile.dynamic_bus_bytes / self.params.bus_bandwidth_bytes_per_cycle
         cpu_layout = 0.0  # Host cache accommodates arbitrary access patterns
         cpu_sync = 0.0    # No offload launch or device barrier required
 
@@ -394,7 +435,10 @@ class PIMCostModel:
             transfer_cost=cpu_transfer,
             layout_cost=cpu_layout,
             synchronization_cost=cpu_sync,
-            notes="Executes entirely on host CPU; all memory lines traverse the off-chip memory bus."
+            notes=(
+                f"Executes on host CPU core ({effective_ops} ops * {self.params.cpu_cycles_per_arithmetic_op} cyc). "
+                f"Streams {profile.dynamic_bus_bytes} bytes across memory bus ({self.params.bus_bandwidth_bytes_per_cycle} B/cyc)."
+            )
         )
 
         # -------------------------------------------------------------
@@ -417,18 +461,20 @@ class PIMCostModel:
             )
         else:
             pim_compute = effective_ops * self.params.pim_cycles_per_arithmetic_op
-            # Array data stays in DRAM bank row buffers; only small scalar operands traverse bus (e.g. 8 bytes)
-            pim_transfer = 8.0 / self.params.bus_bandwidth_bytes_per_cycle
+            # Array data stays in DRAM bank row buffers (0 bus bytes);
+            # Host dispatches 8-byte command descriptor (base pointer + loop bound) over bus.
+            pim_transfer = self.params.pim_kernel_dispatch_bytes / self.params.bus_bandwidth_bytes_per_cycle
             pim_layout = 0.0
             pim_sync = self.params.pim_launch_sync_overhead_cycles
 
-            # Strided penalty if access pattern is not sequential
             if profile.access_pattern == "strided":
-                # Uncoalesced bank row buffer conflicts
                 pim_compute *= 1.35
                 notes = "Direct PIM offload. Suffers strided row-buffer miss penalty."
             else:
-                notes = "Direct PIM offload. Array reads access local bank row buffers with zero bus traffic."
+                notes = (
+                    f"Direct PIM offload ({effective_ops} ops * {self.params.pim_cycles_per_arithmetic_op} cyc). "
+                    f"Array in row buffer; {self.params.pim_kernel_dispatch_bytes}B control descriptor dispatched over bus."
+                )
 
             direct_pim = CandidateCost(
                 strategy_name="DIRECT_PIM",
@@ -443,7 +489,6 @@ class PIMCostModel:
         # -------------------------------------------------------------
         # Candidate 3: TRANSFORMED_PIM
         # -------------------------------------------------------------
-        # Layout-aware PIM execution. Reorganizes strided/scattered data into contiguous row buffer format.
         if profile.has_unsupported_ops or not profile.is_pim_hardware_eligible:
             transformed_pim = CandidateCost(
                 strategy_name="TRANSFORMED_PIM",
@@ -459,10 +504,9 @@ class PIMCostModel:
                 notes="Not applicable for contiguous streaming accesses."
             )
         else:
-            # Transformation is evaluated
             trans_compute = effective_ops * self.params.pim_cycles_per_arithmetic_op
-            trans_transfer = 8.0 / self.params.bus_bandwidth_bytes_per_cycle
-            trans_layout = profile.total_memory_bytes * self.params.layout_transform_cycles_per_byte
+            trans_transfer = self.params.pim_kernel_dispatch_bytes / self.params.bus_bandwidth_bytes_per_cycle
+            trans_layout = profile.dynamic_bus_bytes * self.params.layout_transform_cycles_per_byte
             trans_sync = self.params.pim_launch_sync_overhead_cycles
 
             transformed_pim = CandidateCost(
@@ -481,18 +525,14 @@ class PIMCostModel:
             "TRANSFORMED_PIM": transformed_pim
         }
 
-        # -------------------------------------------------------------
-        # Cost-Aware Decision Logic: Pick minimum-cost valid candidate
-        # -------------------------------------------------------------
+        # Pick minimum-cost valid candidate
         valid_candidates = [c for c in candidates.values() if c.is_valid]
         selected = min(valid_candidates, key=lambda c: c.total_cost)
 
-        # Speedup vs CPU
         cpu_cost = cpu_candidate.total_cost
         speedup = round(cpu_cost / selected.total_cost, 2) if selected.total_cost > 0 else 1.0
         offload_beneficial = (selected.strategy_name != "CPU_ONLY" and selected.total_cost < cpu_cost)
 
-        # Explainable decision rationale
         rationale = self._generate_rationale(selected, cpu_candidate, direct_pim, transformed_pim, profile)
 
         transformation_status = "not_needed"
@@ -538,7 +578,7 @@ class PIMCostModel:
                 )
             else:
                 return (
-                    f"CPU execution selected: Workload computation is small ({profile.total_memory_bytes} bytes). "
+                    f"CPU execution selected: Workload data traffic is small ({profile.dynamic_bus_bytes} bytes). "
                     f"The PIM offload launch synchronization overhead ({self.params.pim_launch_sync_overhead_cycles:.0f} cycles) "
                     f"exceeds the memory bus transfer savings (CPU: {cpu.total_cost} cycles vs PIM: {direct_pim.total_cost} cycles)."
                 )

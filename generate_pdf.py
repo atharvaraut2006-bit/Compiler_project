@@ -68,7 +68,6 @@ def build_pdf(filename="Compiler_for_PIM_Cost_Model_Specification.pdf"):
 
     styles = getSampleStyleSheet()
 
-    # Custom styles
     title_style = ParagraphStyle(
         'DocTitle',
         parent=styles['Normal'],
@@ -98,17 +97,6 @@ def build_pdf(filename="Compiler_for_PIM_Cost_Model_Specification.pdf"):
         spaceAfter=6,
         keepWithNext=True
     )
-    h2_style = ParagraphStyle(
-        'SectionH2',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=10,
-        leading=14,
-        textColor=colors.HexColor("#334155"),
-        spaceBefore=8,
-        spaceAfter=4,
-        keepWithNext=True
-    )
     body_style = ParagraphStyle(
         'BodyDark',
         parent=styles['Normal'],
@@ -117,14 +105,6 @@ def build_pdf(filename="Compiler_for_PIM_Cost_Model_Specification.pdf"):
         leading=12,
         textColor=colors.HexColor("#1e293b"),
         spaceAfter=5
-    )
-    callout_style = ParagraphStyle(
-        'CalloutText',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=8.5,
-        leading=12.5,
-        textColor=colors.HexColor("#065f46")
     )
     formula_style = ParagraphStyle(
         'FormulaText',
@@ -214,13 +194,13 @@ def build_pdf(filename="Compiler_for_PIM_Cost_Model_Specification.pdf"):
         ],
         [
             Paragraph("<b>Compute Cost</b><br/>(C<sub>comp</sub>)", td_style),
-            Paragraph("<b>N<sub>ops</sub> &times; CyclesPerOp</b>", td_mono),
-            Paragraph("Execution time of arithmetic and comparison operations. Superscalar CPU cores operate at ~1.0 cyc/op. Low-power in-memory PIM ALUs operate at ~1.2 cyc/op.", td_style)
+            Paragraph("<b>N<sub>dyn_ops</sub> &times; CyclesPerOp</b>", td_mono),
+            Paragraph("Execution time of operations across all iterations (N<sub>dyn_ops</sub> = N<sub>loop_ops</sub> &times; Iterations). Superscalar CPU cores operate at 1.0 cyc/op. Low-power in-memory PIM ALUs operate at 1.2 cyc/op.", td_style)
         ],
         [
             Paragraph("<b>Transfer Cost</b><br/>(C<sub>xfer</sub>)", td_style),
             Paragraph("<b>BytesMoved / BusBandwidth</b>", td_mono),
-            Paragraph("Time required to move data across the off-chip memory bus (2.0 B/cycle). For PIM, array data resides locally in DRAM row buffers (0 bus cycles); only scalar parameters traverse the bus.", td_style)
+            Paragraph("Time required to move data across the memory bus (2.0 B/cycle). For CPU, all array lines traverse the bus. For PIM, arrays reside in DRAM row buffers (0 bus bytes); only an 8-byte control descriptor is dispatched over the bus.", td_style)
         ],
         [
             Paragraph("<b>Layout Cost</b><br/>(C<sub>layout</sub>)", td_style),
@@ -230,7 +210,7 @@ def build_pdf(filename="Compiler_for_PIM_Cost_Model_Specification.pdf"):
         [
             Paragraph("<b>Sync Cost</b><br/>(C<sub>sync</sub>)", td_style),
             Paragraph("<b>PIM_LAUNCH_SYNC_OVERHEAD</b>", td_mono),
-            Paragraph("Host CPU kernel launch dispatch, command register configuration, and barrier completion synchronization overhead (60 cycles). 0 cycles for native CPU execution.", td_style)
+            Paragraph("Host CPU kernel launch dispatch, command queueing, and completion barrier synchronization overhead (60 cycles). 0 cycles for native CPU execution.", td_style)
         ]
     ]
     t_terms = Table(terms_data, colWidths=[1.3 * inch, 2.2 * inch, 3.9 * inch])
@@ -260,6 +240,7 @@ def build_pdf(filename="Compiler_for_PIM_Cost_Model_Specification.pdf"):
         [Paragraph("BUS_BANDWIDTH", td_mono), Paragraph("2.0 bytes / cycle", td_style), Paragraph("Off-chip DDR memory bus channel bandwidth limit.", td_style)],
         [Paragraph("PIM_INTERNAL_BANDWIDTH", td_mono), Paragraph("32.0 bytes / cycle", td_style), Paragraph("Wide on-die TSV / DRAM bank row-buffer internal bus.", td_style)],
         [Paragraph("PIM_LAUNCH_SYNC_OVERHEAD", td_mono), Paragraph("60.0 cycles", td_style), Paragraph("Host kernel launch dispatch, command queueing, and completion barrier.", td_style)],
+        [Paragraph("PIM_KERNEL_DISPATCH_BYTES", td_mono), Paragraph("8.0 bytes (2 words)", td_style), Paragraph("Array base pointer (4B) + iteration count (4B) command descriptor dispatched to PIM.", td_style)],
         [Paragraph("LAYOUT_TRANSFORM_PENALTY", td_mono), Paragraph("0.25 cycles / byte", td_style), Paragraph("Strided gather/scatter and in-memory bank re-alignment penalty.", td_style)],
         [Paragraph("WORD_SIZE", td_mono), Paragraph("4 bytes (32-bit int)", td_style), Paragraph("Standard word size for C int scalar and array elements.", td_style)]
     ]
@@ -275,56 +256,55 @@ def build_pdf(filename="Compiler_for_PIM_Cost_Model_Specification.pdf"):
     story.append(t_params)
     story.append(Spacer(1, 8))
 
-    # Section 4: Deep Dive on the "80 Bytes vs 32 Bytes" Question
-    story.append(Paragraph("4. Memory Footprint Analysis: Why 80 Bytes Was Reported & The Exact Formulation", h1_style))
+    # Section 4: Deep Dive on Operation Counts & Memory Derivation
+    story.append(Paragraph("4. Mathematical Derivation: Operation Counts & Memory Footprint", h1_style))
     p_mem = (
-        "<b>Direct Answer to Faculty & Reviewer Query:</b><br/>"
-        "Consider the demonstration program: <code>int arr[4] = {10, 20, 30, 40}; int sum = 0; for(int i=0; i&lt;4; i++) sum += arr[i];</code><br/>"
-        "The compiler's Three-Address-Code (3AC) generation decomposes this into two distinct phases:"
+        "<b>Direct Answer to Reviewer & Faculty Questions:</b><br/>"
+        "Consider the program: <code>int arr[4] = {10, 20, 30, 40}; int sum = 0; for(int i=0; i&lt;4; i++) sum += arr[i];</code>"
     )
     story.append(Paragraph(p_mem, body_style))
 
-    mem_decomp = [
-        [Paragraph("Phase", th_style), Paragraph("IR Operations Generated", th_style), Paragraph("Execution Frequency", th_style), Paragraph("Bytes Transferred", th_style)],
+    q_data = [
+        [Paragraph("Question / Ambiguity", th_style), Paragraph("Root Cause in Naive Models", th_style), Paragraph("Exact Mathematical Formulation", th_style)],
         [
-            Paragraph("<b>Phase A: Array Initialization</b>", td_style),
-            Paragraph("4 &times; STORE_INDEXED arr[0]=10, arr[1]=20, arr[2]=30, arr[3]=40", td_mono),
-            Paragraph("Executed <b>ONCE</b> at startup (outside loop)", td_style),
-            Paragraph("4 stores &times; 4 bytes = <b>16 bytes</b> written", td_style)
+            Paragraph("<b>Compute Ops = 3 vs CPU = 12 cyc & PIM = 14.4 cyc</b>", td_style),
+            Paragraph("The loop body has <b>3 static operations</b> (1 comparison <code>i&lt;4</code>, 1 array addition <code>sum+arr[i]</code>, 1 increment <code>i++</code>). If labeled simply 'Compute Ops: 3', reviewer expects 3 &times; 1 = 3 cyc and 3 &times; 1.2 = 3.6 cyc.", td_style),
+            Paragraph("Over 4 iterations, <b>Total Dynamic Operations = 3 ops/iter &times; 4 iterations = 12 ops</b>.<br/>"
+                      "&bull; CPU Compute: 12 ops &times; 1.0 cyc/op = <b>12.0 cycles</b>.<br/>"
+                      "&bull; PIM Compute: 12 ops &times; 1.2 cyc/op = <b>14.4 cycles</b>.", td_style)
         ],
         [
-            Paragraph("<b>Phase B: Loop Accumulation</b>", td_style),
-            Paragraph("1 &times; LOAD_INDEXED sum += arr[i]", td_mono),
-            Paragraph("Executed <b>4 TIMES</b> (inside loop body)", td_style),
-            Paragraph("4 iterations &times; 4 bytes = <b>16 bytes</b> read", td_style)
+            Paragraph("<b>Memory Footprint = 80 B vs Declared Variables = 24 B</b>", td_style),
+            Paragraph("Declared variables in C occupy <b>24 bytes</b>: <code>int arr[4]</code> (16 B) + <code>int sum</code> (4 B) + <code>int i</code> (4 B). Initial naive formula multiplied 16 B startup writes by 4 loop iterations = 64 B + 16 B reads = <b>80 B</b>.", td_style),
+            Paragraph("With <b>CFG back-edge loop boundary isolation</b>:<br/>"
+                      "&bull; <b>Declared Variable Storage</b>: 4 &times; 4 B + 2 &times; 4 B = <b>24 bytes</b>.<br/>"
+                      "&bull; <b>Startup Array Stores</b>: 4 initializers &times; 4 B = <b>16 bytes</b> (written once).<br/>"
+                      "&bull; <b>Loop Streaming Reads</b>: 4 iterations &times; 4 B = <b>16 bytes</b> (read in loop).<br/>"
+                      "&bull; <b>Total Dynamic Bus Traffic</b>: 16 B + 16 B = <b>32 bytes</b>.", td_style)
+        ],
+        [
+            Paragraph("<b>CPU Transfer = 16 cyc vs 40 cyc</b>", td_style),
+            Paragraph("40 cycles was calculated when 80 bytes were transferred (80 B / 2.0 B/cyc = 40 cyc).", td_style),
+            Paragraph("With exact dynamic data movement of 32 bytes:<br/>"
+                      "&bull; CPU Transfer = <b>32 bytes / 2.0 B/cycle = 16.0 cycles</b>.", td_style)
+        ],
+        [
+            Paragraph("<b>PIM Transfer = 4.0 cyc Justification</b>", td_style),
+            Paragraph("The array <code>arr</code> resides in DRAM row buffers (0 bus bytes), but why was PIM Transfer 4 cycles?", td_style),
+            Paragraph("The host CPU must send an <b>8-byte Kernel Command Descriptor</b> (4B array base pointer + 4B iteration count) across the bus to initiate the PIM kernel:<br/>"
+                      "&bull; PIM Transfer = <b>8.0 bytes / 2.0 B/cycle = 4.0 cycles</b>.", td_style)
         ]
     ]
-    t_decomp = Table(mem_decomp, colWidths=[1.5 * inch, 2.7 * inch, 1.8 * inch, 1.4 * inch])
-    t_decomp.setStyle(TableStyle([
+    t_q = Table(q_data, colWidths=[2.2 * inch, 2.5 * inch, 2.7 * inch])
+    t_q.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#0f766e")),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
         ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#f0fdfa")]),
         ('TOPPADDING', (0,0), (-1,-1), 4),
         ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
     ]))
-    story.append(t_decomp)
-    story.append(Spacer(1, 6))
-
-    why_80 = (
-        "<b>Why Did It Show 80 Bytes Previously?</b><br/>"
-        "In the initial static analysis prototype, the loop iteration multiplier (<code>iter_multiplier = 4</code>) was "
-        "applied globally to all array stores in the entire function without distinguishing whether the store occurred "
-        "inside or outside the loop boundary:<br/>"
-        "&nbsp;&nbsp;&bull; <code>bytes_written = 16 bytes (from 4 initializers) &times; 4 (loop iterations) = 64 bytes</code><br/>"
-        "&nbsp;&nbsp;&bull; <code>bytes_read = 4 bytes (from loop load) &times; 4 (loop iterations) = 16 bytes</code><br/>"
-        "&nbsp;&nbsp;&bull; <code>Total Memory Footprint = 64 bytes + 16 bytes = <b>80 bytes</b></code>.<br/>"
-        "<b>The Corrected Loop-Boundary Formulation:</b><br/>"
-        "With precise loop-boundary tagging (differentiating one-time startup stores from loop-body instructions):<br/>"
-        "&nbsp;&nbsp;&bull; <code>Dynamic Data Movement = 16 bytes (startup write) + 16 bytes (loop read) = <b>32 bytes</b></code>.<br/>"
-        "&nbsp;&nbsp;&bull; <code>Static Declared Array Storage = 4 elements &times; 4 bytes = <b>16 bytes</b></code>."
-    )
-    story.append(Paragraph(why_80, body_style))
+    story.append(t_q)
     story.append(Spacer(1, 8))
 
     # Section 5: Step-by-Step Numerical Walkthroughs
@@ -337,29 +317,34 @@ def build_pdf(filename="Compiler_for_PIM_Cost_Model_Specification.pdf"):
             Paragraph("Case 2: Memory-Bound Array (N = 100)<br/>Large Array Accumulation", th_style)
         ],
         [
-            Paragraph("Computational Operations (N<sub>ops</sub>)", td_style),
-            Paragraph("5 operations (4 loop additions + 1 loop counter)", td_style),
-            Paragraph("101 operations (100 additions + 1 counter)", td_style)
+            Paragraph("Static Kernel Ops", td_style),
+            Paragraph("3 operations per iteration", td_style),
+            Paragraph("3 operations per iteration", td_style)
         ],
         [
-            Paragraph("Dynamic Memory Movement", td_style),
-            Paragraph("32 bytes (16 B startup + 16 B read)", td_style),
-            Paragraph("400 bytes (100 array elements read)", td_style)
+            Paragraph("Dynamic Executed Ops (N<sub>dyn</sub>)", td_style),
+            Paragraph("<b>12 operations</b> (3 ops &times; 4 iterations)", td_style),
+            Paragraph("<b>300 operations</b> (3 ops &times; 100 iterations)", td_style)
+        ],
+        [
+            Paragraph("Declared Storage vs Bus Traffic", td_style),
+            Paragraph("24 B declared | <b>32 B dynamic bus traffic</b>", td_style),
+            Paragraph("408 B declared | <b>400 B dynamic bus traffic</b>", td_style)
         ],
         [
             Paragraph("<b>CPU_ONLY Strategy</b>", td_style),
-            Paragraph("Compute: 5 &times; 1.0 = 5.0 cyc<br/>Transfer: 32 / 2.0 = 16.0 cyc<br/>Sync: 0 cyc<br/><b>Total CPU Cost: 21.0 cycles</b>", td_mono),
-            Paragraph("Compute: 101 &times; 1.0 = 101.0 cyc<br/>Transfer: 400 / 2.0 = 200.0 cyc<br/>Sync: 0 cyc<br/><b>Total CPU Cost: 301.0 cycles</b>", td_mono)
+            Paragraph("Compute: 12 &times; 1.0 = 12.0 cyc<br/>Transfer: 32 / 2.0 = 16.0 cyc<br/>Sync: 0 cyc<br/><b>Total CPU Cost: 28.0 cycles</b>", td_mono),
+            Paragraph("Compute: 300 &times; 1.0 = 300.0 cyc<br/>Transfer: 400 / 2.0 = 200.0 cyc<br/>Sync: 0 cyc<br/><b>Total CPU Cost: 500.0 cycles</b>", td_mono)
         ],
         [
             Paragraph("<b>DIRECT_PIM Strategy</b>", td_style),
-            Paragraph("Compute: 5 &times; 1.2 = 6.0 cyc<br/>Transfer: 4.0 cyc (scalar dispatch)<br/>Sync: 60.0 cyc (launch barrier)<br/><b>Total PIM Cost: 70.0 cycles</b>", td_mono),
-            Paragraph("Compute: 101 &times; 1.2 = 121.2 cyc<br/>Transfer: 4.0 cyc (scalar dispatch)<br/>Sync: 60.0 cyc (launch barrier)<br/><b>Total PIM Cost: 185.2 cycles</b>", td_mono)
+            Paragraph("Compute: 12 &times; 1.2 = 14.4 cyc<br/>Transfer: 8.0 / 2.0 = 4.0 cyc<br/>Sync: 60.0 cyc (launch barrier)<br/><b>Total PIM Cost: 78.4 cycles</b>", td_mono),
+            Paragraph("Compute: 300 &times; 1.2 = 360.0 cyc<br/>Transfer: 8.0 / 2.0 = 4.0 cyc<br/>Sync: 60.0 cyc (launch barrier)<br/><b>Total PIM Cost: 424.0 cycles</b>", td_mono)
         ],
         [
             Paragraph("<b>Cost Model Decision</b>", td_style),
-            Paragraph("<b>SELECT CPU_ONLY</b><br/>(21.0 &lt; 70.0 cycles)<br/><i>Rationale: Sync overhead (60 cyc) exceeds memory bus savings (12 cyc).</i>", ParagraphStyle('DecCPU', fontName='Helvetica-Bold', fontSize=7.5, leading=9.5, textColor=colors.HexColor("#1d4ed8"))),
-            Paragraph("<b>SELECT DIRECT_PIM</b><br/>(185.2 &lt; 301.0 cycles)<br/><i>Rationale: In-memory execution eliminates 196 cyc bus traffic, yielding <b>1.63&times; speedup</b>.</i>", ParagraphStyle('DecPIM', fontName='Helvetica-Bold', fontSize=7.5, leading=9.5, textColor=colors.HexColor("#047857")))
+            Paragraph("<b>SELECT CPU_ONLY</b><br/>(28.0 &lt; 78.4 cycles)<br/><i>Rationale: PIM launch sync overhead (60 cyc) exceeds memory bus savings (12 cyc).</i>", ParagraphStyle('DecCPU', fontName='Helvetica-Bold', fontSize=7.5, leading=9.5, textColor=colors.HexColor("#1d4ed8"))),
+            Paragraph("<b>SELECT DIRECT_PIM</b><br/>(424.0 &lt; 500.0 cycles)<br/><i>Rationale: Eliminates 196 cyc bus traffic, overcoming sync overhead to yield <b>1.18&times; speedup</b>.</i>", ParagraphStyle('DecPIM', fontName='Helvetica-Bold', fontSize=7.5, leading=9.5, textColor=colors.HexColor("#047857")))
         ]
     ]
     t_case = Table(case_data, colWidths=[1.8 * inch, 2.8 * inch, 2.8 * inch])
@@ -377,7 +362,7 @@ def build_pdf(filename="Compiler_for_PIM_Cost_Model_Specification.pdf"):
     # Section 6: Candidate Strategies & Selection Policy
     story.append(Paragraph("6. Strategy Selection Criteria & Correctness Invariants", h1_style))
     p_rules = (
-        "<b>1. Correctness Constraint:</b> If a kernel contains unsupported operations (e.g., <code>DIV</code>, <code>MOD</code>, "
+        "<b>1. Correctness Invariant:</b> If a kernel contains unsupported operations (e.g., <code>DIV</code>, <code>MOD</code>, "
         "function calls) or operates strictly on host stack scalars without array data, PIM candidates are marked <i>Invalid</i> "
         "and the system unconditionally defaults to the <code>CPU_ONLY</code> fallback.<br/>"
         "<b>2. Minimum-Cost Optimization Policy:</b> Among all valid candidates, the compiler selects:<br/>"
