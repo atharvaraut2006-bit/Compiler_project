@@ -1,0 +1,276 @@
+================================================================================
+PERSISTENT PROJECT HANDOVER DOCUMENT: change
+Project: Compiler for Processing in Memory (PIM): Design and Simulation
+Current Phase: Phase 1 (C Compiler Front End)
+Date: 2026-10-11
+================================================================================
+
+1. PROJECT TITLE AND OVERALL OBJECTIVE
+--------------------------------------------------------------------------------
+Title: Compiler for Processing in Memory (PIM): Design and Simulation
+Objective: To build an educational compiler and simulation platform that accepts
+C source programs, transforms them into an intermediate representation, identifies
+operations eligible for in-memory acceleration (Processing in Memory), offloads them
+to simulated PIM hardware instructions, and compares simulated CPU execution against
+PIM execution to demonstrate data-movement reduction and execution speedups.
+
+
+2. THE SIX-PHASE ROADMAP
+--------------------------------------------------------------------------------
+Phase 1 — C Compiler Front End:
+  Lexical analysis, recursive descent parsing, AST generation, semantic analysis,
+  scoped symbol table, error diagnostics, and a dedicated developer interface.
+  [STATUS: FULLY IMPLEMENTED & TESTED]
+
+Phase 2 — Intermediate Representation (IR) & PIM Mapping:
+  Three-address code generation, loop/vector pattern detection, and mapping to
+  simulated PIM instructions (PIM_LOAD_ARRAY, PIM_REDUCE_SUM, etc.).
+  [STATUS: PENDING - Next Phase]
+
+Phase 3 — CPU & PIM Simulators:
+  Dual-execution cycle and memory simulators, execution trace generation, and
+  semantic equivalence verification.
+  [STATUS: PENDING]
+
+Phase 4 — Performance Analysis:
+  Memory bus traffic in bytes, cycle latency models, speedup formulas, and operation
+  distribution calculations.
+  [STATUS: PENDING]
+
+Phase 5 — React Dashboard & FastAPI Integration:
+  Full multi-view interactive dashboard with charts (Recharts) and compiler explorer.
+  [STATUS: PENDING]
+
+Phase 6 — Testing, Evaluation & Documentation:
+  Comprehensive workload suite, scaling benchmarks, academic documentation, and
+  manuscript preparation.
+  [STATUS: PENDING]
+
+
+3. CURRENT PHASE BEING IMPLEMENTED
+--------------------------------------------------------------------------------
+Phase 1: C Compiler Front End (Strictly Limited to Phase 1 Requirements).
+
+
+4. PHASE 1 FEATURES ACTUALLY COMPLETED
+--------------------------------------------------------------------------------
+1. Source Code Input: Multi-line C code editor supporting code entry, preloaded
+   catalog examples, validation of empty inputs, and line-accurate position reporting.
+2. Lexical Analysis: Tokenizer producing ordered tokens with exact line and column
+   coordinates. Handles identifiers, integer constants, keywords, single-line (//)
+   and multi-line (/* ... */) comments, arithmetic, assignment, relational, equality,
+   logical, and delimiter operators.
+3. Syntax Analysis & AST: Handwritten recursive descent parser enforcing operator
+   precedence climbing (||, &&, ==, !=, <, <=, >, >=, +, -, *, /, %, unary -, !).
+   Constructs a clean AST representing programs, functions (e.g., int main()),
+   variable declarations, array declarations, loops (for, while), conditions (if/else),
+   and return statements.
+4. Semantic Analysis: Symbol table with lexical scoping tracking symbol name, type,
+   array properties, size, line, column, and scope level. Verifies undeclared variables,
+   duplicate definitions, indexing non-arrays, array initializer count overflows,
+   division by zero in constant literals, and static array bounds checks.
+5. Compiler Orchestration: Pure Python module (Compiler) executing Lexer -> Parser ->
+   Semantic Analyzer with clear stage status tracking (success, error, skipped).
+6. FastAPI Backend: RESTful endpoints:
+   - POST /api/compile (orchestrates full Phase 1 front end)
+   - GET /api/health (service health & version)
+   - GET /api/examples (catalog of 4 test benchmarks)
+7. React Front End: Light-themed, academic developer interface featuring CodeMirror
+   C editor, live stage-status cards, filterable Token table, interactive AST tree
+   and indented JSON inspector, Scoped Symbol Table, Diagnostics banner, and
+   collapsible C specification panel.
+8. Automated Testing: 35 passing pytest unit and integration tests (100% pass rate).
+
+
+5. FILES CREATED OR MODIFIED
+--------------------------------------------------------------------------------
+Backend:
+  - backend/requirements.txt: Dependencies (fastapi, uvicorn, pydantic, pytest, httpx).
+  - backend/pytest.ini: Test configuration disabling global asyncio conflicts.
+  - backend/conftest.py: Ensures sys.path imports work reliably.
+  - backend/main.py: FastAPI REST server with CORS and error handling.
+  - backend/compiler/__init__.py: Package exports for compiler front end.
+  - backend/compiler/ast_nodes.py: AST node definitions with JSON serialization.
+  - backend/compiler/lexer.py: Tokenizer with line/col tracking and comment handling.
+  - backend/compiler/parser.py: Recursive descent parser with precedence climbing.
+  - backend/compiler/semantic.py: Scoped symbol table and semantic diagnostic checks.
+  - backend/compiler/compiler.py: Compiler orchestrator returning structured results.
+  - backend/tests/test_lexer.py: 8 unit tests for lexical tokenization.
+  - backend/tests/test_parser.py: 9 unit tests for syntax parsing & AST.
+  - backend/tests/test_semantic.py: 7 unit tests for semantic analysis.
+  - backend/tests/test_compiler_orchestration.py: 5 tests for pipeline cascades.
+  - backend/tests/test_api.py: 6 integration tests for API endpoints.
+
+Frontend:
+  - frontend/package.json & package-lock.json: React 19, Vite, CodeMirror, Axios.
+  - frontend/vite.config.js: Vite server config with port 5173 and /api proxy.
+  - frontend/src/main.jsx: Root React entrypoint.
+  - frontend/src/App.jsx: Master Phase 1 compiler workspace.
+  - frontend/src/App.css: Light professional developer interface styling.
+  - frontend/src/styles/variables.css: Academic CSS design tokens.
+  - frontend/src/api/client.js: Axios API client connecting to FastAPI.
+  - frontend/src/components/CodeEditor.jsx: CodeMirror C editor.
+  - frontend/src/components/ExampleSelector.jsx: Preloaded Phase 1 benchmark selector.
+  - frontend/src/components/StageStatusPanel.jsx: Visual stage status cards.
+  - frontend/src/components/TokenTable.jsx: Filterable token inspection table.
+  - frontend/src/components/ASTViewer.jsx: Tree and JSON AST viewer.
+  - frontend/src/components/SemanticViewer.jsx: Scoped symbol table & diagnostics.
+  - frontend/src/components/LanguageSpec.jsx: Supported vs unsupported C spec.
+
+Documentation & Root:
+  - README.md: Complete project documentation and review demonstration guide.
+  - change: This persistent handover record.
+
+
+6. COMPILER GRAMMAR AND SUPPORTED C SUBSET
+--------------------------------------------------------------------------------
+Grammar Overview (EBNF-style):
+  Program         ::= TopLevelDecl* EOF
+  TopLevelDecl    ::= FunctionDef | Statement
+  FunctionDef     ::= "int" IDENTIFIER "(" ParameterList? ")" Block
+  ParameterList   ::= "int" IDENTIFIER ("," "int" IDENTIFIER)*
+  Statement       ::= VarDecl | ArrayDecl | Block | ForLoop | WhileLoop
+                    | IfStmt | ReturnStmt | PrintStmt | ExprStmt | AssignmentStmt
+  VarDecl         ::= "int" IDENTIFIER ("=" Expr)? ";"
+  ArrayDecl       ::= "int" IDENTIFIER "[" INT_LITERAL "]" ("=" "{" ExprList? "}")? ";"
+  Block           ::= "{" Statement* "}"
+  ForLoop         ::= "for" "(" ForInit? ";" Expr? ";" ForUpdate? ")" Statement
+  WhileLoop       ::= "while" "(" Expr ")" Statement
+  IfStmt          ::= "if" "(" Expr ")" Statement ("else" Statement)?
+  ReturnStmt      ::= "return" Expr? ";"
+  PrintStmt       ::= "print" "(" Expr ")" ";"
+  AssignmentStmt  ::= (IDENTIFIER | ArrayAccess) ("=" | "+=" | "-=" | "*=" | "/=") Expr ";"
+  Expr            ::= LogicalOrExpr
+  LogicalOrExpr   ::= LogicalAndExpr ("||" LogicalAndExpr)*
+  LogicalAndExpr  ::= EqualityExpr ("&&" EqualityExpr)*
+  EqualityExpr    ::= RelationalExpr (("==" | "!=") RelationalExpr)*
+  RelationalExpr  ::= AdditiveExpr (("<" | "<=" | ">" | ">=") AdditiveExpr)*
+  AdditiveExpr    ::= MultiplicativeExpr (("+" | "-") MultiplicativeExpr)*
+  Multiplicative  ::= UnaryExpr (("*" | "/" | "%") UnaryExpr)*
+  UnaryExpr       ::= ("-" | "!" | "++" | "--") UnaryExpr | PrimaryExpr
+  PrimaryExpr     ::= INT_LITERAL | IDENTIFIER | ArrayAccess | "(" Expr ")"
+  ArrayAccess     ::= IDENTIFIER "[" Expr "]"
+
+
+7. TOKEN AND AST REPRESENTATION
+--------------------------------------------------------------------------------
+Token:
+  {
+    "type": "INT" | "IDENTIFIER" | "INT_LITERAL" | "ASSIGN" | ... ,
+    "value": "arr" | 42 | "+=" | ... ,
+    "line": int,
+    "column": int
+  }
+
+AST Nodes (all serialize via to_dict()):
+  - Program: body: [ASTNode]
+  - FunctionDef: name, return_type, params, body
+  - VarDecl: type_name, name, initializer
+  - ArrayDecl: type_name, name, size, initializers: [ASTNode]
+  - Block: statements: [ASTNode]
+  - Assignment: target, value
+  - CompoundAssignment: target, op, value
+  - ForLoop: init, condition, update, body
+  - WhileLoop: condition, body
+  - IfStatement: condition, then_branch, else_branch
+  - ReturnStatement: value
+  - PrintStatement: expression
+  - BinaryOp: left, op, right
+  - UnaryOp: op, operand, is_prefix
+  - ArrayAccess: array_name, index
+  - Identifier: name
+  - IntLiteral: value
+
+
+8. SEMANTIC-ANALYSIS RULES
+--------------------------------------------------------------------------------
+1. Variables and arrays must be declared before use.
+2. Identifiers cannot be re-declared in the same lexical scope level.
+3. Scalar variables cannot be indexed like arrays.
+4. Array initializer list element count must not exceed declared array capacity.
+5. Array size must be a strictly positive integer constant (> 0).
+6. Constant integer division by zero generates a semantic diagnostic.
+7. Static array bounds check is enforced when index expression is a constant literal.
+
+
+9. API ENDPOINTS AND REQUEST/RESPONSE STRUCTURE
+--------------------------------------------------------------------------------
+POST /api/compile:
+  Request:  { "source_code": "int main() { return 0; }" }
+  Response: {
+    "success": true,
+    "error": null,
+    "stages": {
+      "lexical": { "status": "success", "message": "...", "token_count": N },
+      "syntax":  { "status": "success", "message": "..." },
+      "semantic":{ "status": "success", "message": "..." }
+    },
+    "tokens": [ ... ],
+    "ast": { "node_type": "Program", ... },
+    "symbol_table": { "x": { "name": "x", "type_name": "int", ... } },
+    "diagnostics": [ ... ],
+    "supported_language": { ... }
+  }
+
+GET /api/health:
+  Response: { "status": "ok", "phase": "Phase 1: C Compiler Front End", "version": "1.0.0" }
+
+GET /api/examples:
+  Response: Array of 4 catalog benchmark examples.
+
+
+10. DEPENDENCIES AND RUN COMMANDS
+--------------------------------------------------------------------------------
+Backend:
+  Python: 3.10+ (Tested with 3.12)
+  Install: pip install -r backend/requirements.txt
+  Start:   python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+  URL:     http://127.0.0.1:8000 (Docs: http://127.0.0.1:8000/docs)
+
+Frontend:
+  Node.js: 18+ (Tested with Node 24)
+  Install: cd frontend && npm install
+  Start:   cd frontend && npm run dev
+  URL:     http://localhost:5173
+
+Tests:
+  Command: python -m pytest backend/tests -v
+
+
+11. TESTS ACTUALLY EXECUTED AND RESULTS
+--------------------------------------------------------------------------------
+Command: python -m pytest backend/tests -v
+Result:  35 passed, 1 warning in 0.35s (100% pass rate)
+
+Categories:
+  - test_lexer.py:                  8 passed
+  - test_parser.py:                 9 passed
+  - test_semantic.py:               7 passed
+  - test_compiler_orchestration.py: 5 passed
+  - test_api.py:                    6 passed
+
+
+12. CURRENT BUGS AND KNOWN LIMITATIONS
+--------------------------------------------------------------------------------
+1. Language scope intentionally restricted to integer scalar and 1D array subset.
+2. Pointers, structs, dynamic memory (malloc), and preprocessor macros (#include)
+   are explicitly unsupported per Phase 1 scope definition.
+3. Multi-dimensional arrays are not supported.
+
+
+13. EXACT NEXT STEPS (FOR PHASE 2)
+--------------------------------------------------------------------------------
+1. Implement Three-Address Code Intermediate Representation (IR) generation from AST.
+2. Implement Loop & Vector Pattern Recognition for PIM candidate operations
+   (reduction sums, element-wise vector addition, element-wise multiplication).
+3. Map recognized patterns to simulated PIM instruction set architecture.
+4. Expose IR and PIM mapping results through backend API.
+5. Add IR and PIM Mapping viewer panels to frontend.
+
+
+14. STOPPING POINT
+--------------------------------------------------------------------------------
+Phase 1 (C Compiler Front End) is 100% complete, tested, and verified.
+All later-phase modules have been decoupled and removed from the active codebase.
+Repository is ready for review demonstration.
+================================================================================

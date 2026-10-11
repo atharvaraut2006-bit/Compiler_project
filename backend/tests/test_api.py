@@ -1,0 +1,74 @@
+"""
+API endpoint integration tests using Starlette TestClient.
+"""
+from starlette.testclient import TestClient
+from backend.main import app
+
+client = TestClient(app)
+
+
+def test_health_endpoint():
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert "Phase 1" in data["phase"]
+
+
+def test_examples_endpoint():
+    response = client.get("/api/examples")
+    assert response.status_code == 200
+    examples = response.json()
+    assert len(examples) >= 4
+    ids = [e["id"] for e in examples]
+    assert "array_summation_main" in ids
+    assert "syntax_error_missing_semicolon" in ids
+    assert "semantic_error_undeclared" in ids
+
+
+def test_api_compile_valid_code():
+    code = """int main() {
+    int arr[4] = {10, 20, 30, 40};
+    int sum = 0;
+    for (int i = 0; i < 4; i++) {
+        sum += arr[i];
+    }
+    return 0;
+}"""
+    response = client.post("/api/compile", json={"source_code": code})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["stages"]["lexical"]["status"] == "success"
+    assert data["stages"]["syntax"]["status"] == "success"
+    assert data["stages"]["semantic"]["status"] == "success"
+    assert len(data["tokens"]) > 0
+    assert data["ast"] is not None
+
+
+def test_api_compile_syntax_error():
+    code = "int x = 10\nint y = 20;"
+    response = client.post("/api/compile", json={"source_code": code})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is False
+    assert data["stages"]["syntax"]["status"] == "error"
+    assert len(data["diagnostics"]) > 0
+
+
+def test_api_compile_semantic_error():
+    code = "int x = 10; z = x + 5;"
+    response = client.post("/api/compile", json={"source_code": code})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is False
+    assert data["stages"]["semantic"]["status"] == "error"
+    assert any("Undeclared variable 'z'" in d["message"] for d in data["diagnostics"])
+
+
+def test_api_compile_empty_code():
+    response = client.post("/api/compile", json={"source_code": ""})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is False
+    assert data["stages"]["lexical"]["status"] == "error"
