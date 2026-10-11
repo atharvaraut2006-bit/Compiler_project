@@ -1,12 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { getExamples } from '../api/client';
+import React, { useState } from 'react';
 
-const PHASE1_EXAMPLES = [
+const SAMPLES = [
   {
-    id: 'array_summation_main',
-    name: '1. Array Reduction (Summation)',
-    category: 'valid',
-    description: 'Computes sum of array elements using a for-loop accumulator with int main().',
+    id: 'sample_1',
+    name: 'Sample 1',
     source_code: `int main() {
     int arr[4] = {10, 20, 30, 40};
     int sum = 0;
@@ -19,10 +16,8 @@ const PHASE1_EXAMPLES = [
 }`
   },
   {
-    id: 'simple_arithmetic',
-    name: '2. Valid Simple Arithmetic & Control Flow',
-    category: 'valid',
-    description: 'Standard arithmetic expressions, parenthesization, conditionals, and built-in print.',
+    id: 'sample_2',
+    name: 'Sample 2',
     source_code: `int x = 15;
 int y = 25;
 int total = (x + y) * 2;
@@ -36,19 +31,15 @@ if (total > 50) {
 print(total);`
   },
   {
-    id: 'syntax_error_missing_semicolon',
-    name: '3. Invalid Syntax (Missing Semicolon Error)',
-    category: 'invalid_syntax',
-    description: 'Demonstrates parser syntax diagnostic when a semicolon is omitted after variable declaration.',
+    id: 'sample_syntax_err',
+    name: 'Syntax Error Test',
     source_code: `int a = 10
 int b = 20;
 int c = a + b;`
   },
   {
-    id: 'semantic_error_undeclared',
-    name: '4. Invalid Semantic (Undeclared Variable Error)',
-    category: 'invalid_semantic',
-    description: 'Demonstrates semantic analyzer error detection when assigning to an undeclared identifier.',
+    id: 'sample_semantic_err',
+    name: 'Semantic Error Test',
     source_code: `int x = 10;
 int y = 20;
 total = x + y;`
@@ -56,37 +47,22 @@ total = x + y;`
 ];
 
 export const ExampleSelector = ({ onSelect }) => {
-  const [examples, setExamples] = useState(PHASE1_EXAMPLES);
-  const [selectedId, setSelectedId] = useState(PHASE1_EXAMPLES[0].id);
-
-  useEffect(() => {
-    getExamples()
-      .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setExamples(data);
-        }
-      })
-      .catch((err) => {
-        console.warn('Using local fallback examples:', err);
-      });
-  }, []);
+  const [selectedId, setSelectedId] = useState('sample_1');
 
   const handleChange = (e) => {
     const id = e.target.value;
     setSelectedId(id);
-    const found = examples.find((ex) => ex.id === id);
+    const found = SAMPLES.find((s) => s.id === id);
     if (found && onSelect) {
       onSelect(found.source_code, found);
     }
   };
 
-  const selectedExample = examples.find((ex) => ex.id === selectedId);
-
   return (
     <div className="example-selector-wrapper">
       <div className="example-selector-header">
         <label htmlFor="example-select" className="example-label">
-          <strong>Select Sample Program:</strong>
+          <strong>Load Sample:</strong>
         </label>
         <select
           id="example-select"
@@ -94,16 +70,13 @@ export const ExampleSelector = ({ onSelect }) => {
           value={selectedId}
           onChange={handleChange}
         >
-          {examples.map((ex) => (
-            <option key={ex.id} value={ex.id}>
-              {ex.name}
+          {SAMPLES.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
             </option>
           ))}
         </select>
       </div>
-      {selectedExample && (
-        <p className="example-description-text">{selectedExample.description}</p>
-      )}
     </div>
   );
 };

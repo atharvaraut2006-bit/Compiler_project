@@ -103,15 +103,11 @@ export const App = () => {
         </div>
 
         <div className="header-right">
-          <div className={`status-pill ${backendOnline === true ? 'pill-online' : backendOnline === false ? 'pill-offline' : 'pill-checking'}`}>
-            <span className="status-dot"></span>
-            Compiler Engine: {backendOnline === true ? 'Online' : backendOnline === false ? 'Offline' : 'Connecting...'}
-          </div>
           <button
             className="btn btn-outline btn-sm"
             onClick={() => setShowSpec(!showSpec)}
           >
-            {showSpec ? 'Hide C Spec' : 'View C Spec'}
+            {showSpec ? 'Hide Language Spec' : 'Language Specification'}
           </button>
         </div>
       </header>

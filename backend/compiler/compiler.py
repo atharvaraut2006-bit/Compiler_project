@@ -48,7 +48,7 @@ class Compiler:
             token_dicts = [t.to_dict() for t in tokens]
             stage_lexical = {
                 "status": "success",
-                "message": f"Successfully identified {len(tokens)} tokens.",
+                "message": f"{len(tokens)} tokens generated.",
                 "token_count": len(tokens)
             }
         except LexerError as e:

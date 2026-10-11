@@ -21,9 +21,9 @@ def test_examples_endpoint():
     examples = response.json()
     assert len(examples) >= 4
     ids = [e["id"] for e in examples]
-    assert "array_summation_main" in ids
-    assert "syntax_error_missing_semicolon" in ids
-    assert "semantic_error_undeclared" in ids
+    assert "sample_1" in ids
+    assert "sample_syntax_err" in ids
+    assert "sample_semantic_err" in ids
 
 
 def test_api_compile_valid_code():
