@@ -3,7 +3,7 @@ import React from 'react';
 export const LanguageSpec = () => {
   return (
     <div className="language-spec-card">
-      <h4 className="spec-heading">Phase 1: Supported C Subset Specification</h4>
+      <h4 className="spec-heading">Supported C Subset Specification</h4>
       <div className="spec-grid">
         <div className="spec-column">
           <h5 className="spec-subheading text-success">✓ Supported Constructs</h5>

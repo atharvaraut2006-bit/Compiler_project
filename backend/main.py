@@ -23,8 +23,8 @@ except (ImportError, ValueError):
 
 
 app = FastAPI(
-    title="C Compiler Front End (Phase 1)",
-    description="Lexical, Syntax, and Semantic Analyzer for C Subset",
+    title="Compiler for Processing in Memory",
+    description="Compiler Front End for C Subset",
     version="1.0.0"
 )
 
@@ -102,7 +102,7 @@ def health_check():
     """Health check endpoint."""
     return {
         "status": "ok",
-        "phase": "Phase 1: C Compiler Front End",
+        "service": "Compiler Service",
         "version": "1.0.0"
     }
 
