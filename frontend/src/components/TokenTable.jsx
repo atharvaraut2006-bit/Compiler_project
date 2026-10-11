@@ -31,11 +31,11 @@ export const TokenTable = ({ tokens = [] }) => {
         <table className="data-table">
           <thead>
             <tr>
-              <th style={{ width: '60px' }}>#</th>
-              <th>Token Type</th>
-              <th>Value</th>
-              <th style={{ width: '80px' }}>Line</th>
-              <th style={{ width: '80px' }}>Column</th>
+              <th style={{ width: '55px', textAlign: 'center' }}>#</th>
+              <th style={{ width: '180px' }}>Token Type</th>
+              <th style={{ minWidth: '180px' }}>Value</th>
+              <th style={{ width: '85px', textAlign: 'center' }}>Line</th>
+              <th style={{ width: '85px', textAlign: 'center' }}>Column</th>
             </tr>
           </thead>
           <tbody>
@@ -47,15 +47,15 @@ export const TokenTable = ({ tokens = [] }) => {
 
               return (
                 <tr key={idx}>
-                  <td className="text-muted">{idx + 1}</td>
+                  <td className="text-muted" style={{ textAlign: 'center' }}>{idx + 1}</td>
                   <td>
                     <span className="token-badge">{type}</span>
                   </td>
                   <td>
                     <code className="token-value">{value}</code>
                   </td>
-                  <td>{line}</td>
-                  <td>{col}</td>
+                  <td style={{ textAlign: 'center' }}>{line}</td>
+                  <td style={{ textAlign: 'center' }}>{col}</td>
                 </tr>
               );
             })}

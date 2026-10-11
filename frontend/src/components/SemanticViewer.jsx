@@ -57,12 +57,12 @@ export const SemanticViewer = ({ symbolTable = {}, diagnostics = [] }) => {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Symbol Name</th>
-                  <th>Type</th>
-                  <th>Kind</th>
-                  <th>Size</th>
-                  <th>Scope Level</th>
-                  <th>Location</th>
+                  <th style={{ width: '180px' }}>Symbol Name</th>
+                  <th style={{ width: '100px' }}>Type</th>
+                  <th style={{ width: '110px' }}>Kind</th>
+                  <th style={{ width: '85px', textAlign: 'center' }}>Size</th>
+                  <th style={{ width: '130px' }}>Scope Level</th>
+                  <th style={{ minWidth: '100px' }}>Location</th>
                 </tr>
               </thead>
               <tbody>

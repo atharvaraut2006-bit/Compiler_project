@@ -1,35 +1,72 @@
 """
-PIM Eligibility Analyzer & Instruction Mapper.
-Analyzes 3AC Intermediate Representation (IR) instructions, applies explicit
-eligibility rules, and maps operations to simulated PIM instructions or CPU fallback.
+Centralized PIM Instruction Eligibility Policy and Mapping Module.
+Defines explicit eligibility rules for simulated in-memory operations,
+routes unsupported or control operations to CPU fallback, and produces
+educational mapping rationales and memory movement metadata.
 """
 from typing import List, Dict, Any, Optional
 
 
-class PIMMapper:
+class PIMPolicy:
     """
-    Evaluates IR instructions for simulated PIM execution suitability
-    and generates mapped instruction traces with educational explanations.
+    Centralized architectural specification for the simulated PIM model.
+    Note: These are project simulation rules, not claims about all real PIM hardware.
     """
-    # Explicit PIM Supported Opcodes
-    PIM_SUPPORTED_OPERATIONS = {
+    # 1. PIM-Eligible Operations
+    PIM_ARITHMETIC = {
         "ADD": "PIM_ADD",
         "SUB": "PIM_SUB",
-        "MUL": "PIM_MUL",
-        "LOAD_INDEXED": "PIM_LOAD",
-        "STORE_INDEXED": "PIM_STORE",
+        "MUL": "PIM_MUL"
+    }
+
+    PIM_COMPARISONS = {
         "COMPARE_LT": "PIM_COMPARE",
         "COMPARE_LE": "PIM_COMPARE",
         "COMPARE_GT": "PIM_COMPARE",
         "COMPARE_GE": "PIM_COMPARE",
         "COMPARE_EQ": "PIM_COMPARE",
-        "COMPARE_NE": "PIM_COMPARE",
+        "COMPARE_NE": "PIM_COMPARE"
     }
+
+    PIM_MEMORY = {
+        "LOAD_INDEXED": "PIM_LOAD",
+        "STORE_INDEXED": "PIM_STORE"
+    }
+
+    # 2. CPU-Fallback Operations
+    CPU_FALLBACK = {
+        "DIV": "CPU_DIV",
+        "MOD": "CPU_MOD",
+        "RETURN": "CPU_RETURN",
+        "BRANCH": "CPU_BRANCH",
+        "JUMP": "CPU_JUMP",
+        "LABEL": "LABEL",
+        "DECLARE": "DECLARE",
+        "CONST": "CPU_CONST",
+        "LOAD": "CPU_LOAD",
+        "STORE": "CPU_STORE",
+        "PRINT": "CPU_PRINT"
+    }
+
+    # 3. Explicit Memory Access Eligibility Rules:
+    # - In-situ array access (LOAD_INDEXED, STORE_INDEXED): Allocated to DRAM bank row buffers -> PIM
+    # - Scalar variable access (LOAD, STORE): Resides in host CPU stack frame -> CPU Fallback
+    # - Immediate constant access (CONST): Encoded in host CPU instruction stream -> CPU Fallback
+
+
+class PIMMapper:
+    """
+    Centralized mapping module enforcing PIM eligibility policies.
+    Every mapping decision includes target assignment (PIM or CPU),
+    mapped instruction mnemonic, memory metadata, and a detailed reason.
+    """
+    def __init__(self, policy: Optional[PIMPolicy] = None):
+        self.policy = policy or PIMPolicy()
 
     def map_instructions(self, ir_instructions: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Maps a sequence of IR instructions into PIM operations or CPU fallbacks.
-        Returns mapped instructions and summary metrics.
+        Maps an ordered sequence of IR instructions into simulated PIM or CPU operations.
+        Returns mapped instructions, summary metrics, and policy details.
         """
         mapped_list = []
         pim_count = 0
@@ -62,10 +99,8 @@ class PIMMapper:
         arg1 = instr.get("arg1")
         arg2 = instr.get("arg2")
         metadata = instr.get("metadata", {})
-        op_type = metadata.get("operation_type", "")
-        mem_region = metadata.get("memory_region", "register")
 
-        # 1. Direct Array & Vector Memory Operations (Primary PIM Target)
+        # Rule 1: Array-indexed Memory Loads (PIM_LOAD)
         if opcode == "LOAD_INDEXED":
             return {
                 "ir_id": instr.get("id"),
@@ -76,18 +111,22 @@ class PIMMapper:
                 "dest": dest,
                 "arg1": arg1,
                 "arg2": arg2,
-                "reason": f"Direct indexed array access '{arg1}[{arg2}]' executed in-situ from local row buffer without memory bus transfer.",
+                "reason": (
+                    f"Array-indexed read '{arg1}[{arg2}]' accesses the local DRAM bank row buffer; "
+                    "eligible for PIM in-situ load without traversing the memory bus."
+                ),
                 "memory_metadata": {
                     "operation_type": "memory_load",
                     "data_type": "int",
                     "memory_region": "array_buffer",
                     "source_var": f"{arg1}[{arg2}]",
                     "dest_var": dest,
-                    "bytes_transferred": 4
+                    "bytes_transferred": 0  # In-situ read eliminates bus traffic
                 },
                 "formatted": f"PIM_LOAD {dest}, {arg1}[{arg2}]"
             }
 
+        # Rule 2: Array-indexed Memory Stores (PIM_STORE)
         if opcode == "STORE_INDEXED":
             return {
                 "ir_id": instr.get("id"),
@@ -98,41 +137,70 @@ class PIMMapper:
                 "dest": dest,
                 "arg1": arg1,
                 "arg2": arg2,
-                "reason": f"Direct in-situ array writeback into memory partition '{dest}[{arg1}]' without external bus traffic.",
+                "reason": (
+                    f"Array-indexed writeback '{dest}[{arg1}]' stores directly into the local memory partition; "
+                    "eligible for PIM in-situ store without external memory bus traffic."
+                ),
                 "memory_metadata": {
                     "operation_type": "memory_store",
                     "data_type": "int",
                     "memory_region": "array_buffer",
                     "source_var": arg2,
                     "dest_var": f"{dest}[{arg1}]",
-                    "bytes_transferred": 4
+                    "bytes_transferred": 0  # In-situ writeback eliminates bus traffic
                 },
                 "formatted": f"PIM_STORE {dest}[{arg1}], {arg2}"
             }
 
-        # 2. Arithmetic Acceleration (ADD, SUB, MUL)
-        if opcode in ("ADD", "SUB", "MUL"):
-            pim_op = self.PIM_SUPPORTED_OPERATIONS[opcode]
+        # Rule 3: PIM-Eligible Arithmetic (ADD, SUB, MUL)
+        if opcode in self.policy.PIM_ARITHMETIC:
+            mapped_op = self.policy.PIM_ARITHMETIC[opcode]
             return {
                 "ir_id": instr.get("id"),
                 "ir_opcode": opcode,
                 "target": "PIM",
-                "mapped_instruction": pim_op,
+                "mapped_instruction": mapped_op,
                 "is_pim": True,
                 "dest": dest,
                 "arg1": arg1,
                 "arg2": arg2,
-                "reason": f"Integer arithmetic '{opcode}' is natively supported by the simulated in-memory ALU banks without host CPU execution.",
+                "reason": (
+                    f"Integer arithmetic '{opcode}' is natively supported by the simulated in-memory ALU banks, "
+                    "allowing local computation adjacent to memory cells."
+                ),
                 "memory_metadata": {
                     "operation_type": "arithmetic",
                     "data_type": "int",
                     "memory_region": "pim_registers",
                     "bytes_transferred": 0
                 },
-                "formatted": f"{pim_op} {dest}, {arg1}, {arg2}"
+                "formatted": f"{mapped_op} {dest}, {arg1}, {arg2}"
             }
 
-        # 3. High-Latency Arithmetic Excluded from PIM (DIV, MOD) -> CPU Fallback
+        # Rule 4: PIM-Eligible Comparisons (COMPARE_LT, LE, GT, GE, EQ, NE)
+        if opcode in self.policy.PIM_COMPARISONS:
+            return {
+                "ir_id": instr.get("id"),
+                "ir_opcode": opcode,
+                "target": "PIM",
+                "mapped_instruction": "PIM_COMPARE",
+                "is_pim": True,
+                "dest": dest,
+                "arg1": arg1,
+                "arg2": arg2,
+                "reason": (
+                    f"Comparison '{opcode}' is evaluated locally by the simulated in-memory comparator circuit."
+                ),
+                "memory_metadata": {
+                    "operation_type": "comparison",
+                    "data_type": "int",
+                    "memory_region": "pim_registers",
+                    "bytes_transferred": 0
+                },
+                "formatted": f"PIM_COMPARE {dest}, {arg1}, {arg2} ({opcode})"
+            }
+
+        # Rule 5: CPU-Fallback Arithmetic (DIV, MOD)
         if opcode in ("DIV", "MOD"):
             return {
                 "ir_id": instr.get("id"),
@@ -143,7 +211,10 @@ class PIMMapper:
                 "dest": dest,
                 "arg1": arg1,
                 "arg2": arg2,
-                "reason": f"Integer '{opcode}' requires multi-cycle iterative divider hardware omitted from in-memory processing units; routed to CPU fallback.",
+                "reason": (
+                    f"Integer '{opcode}' requires multi-cycle iterative divider hardware that is not implemented "
+                    "in the simulated in-memory processing units; routed to CPU fallback."
+                ),
                 "memory_metadata": {
                     "operation_type": "arithmetic",
                     "data_type": "int",
@@ -153,30 +224,8 @@ class PIMMapper:
                 "formatted": f"CPU_{opcode} {dest}, {arg1}, {arg2}"
             }
 
-        # 4. Comparisons (COMPARE_LT, LE, GT, GE, EQ, NE)
-        if opcode.startswith("COMPARE_"):
-            return {
-                "ir_id": instr.get("id"),
-                "ir_opcode": opcode,
-                "target": "PIM",
-                "mapped_instruction": "PIM_COMPARE",
-                "is_pim": True,
-                "dest": dest,
-                "arg1": arg1,
-                "arg2": arg2,
-                "reason": f"Condition evaluation '{opcode}' is executed by the simulated in-memory comparator circuit.",
-                "memory_metadata": {
-                    "operation_type": "comparison",
-                    "data_type": "int",
-                    "memory_region": "pim_registers",
-                    "bytes_transferred": 0
-                },
-                "formatted": f"PIM_COMPARE {dest}, {arg1}, {arg2} ({opcode})"
-            }
-
-        # 5. Scalar Loads and Stores
+        # Rule 6: Scalar Memory Access (LOAD, STORE) -> CPU Fallback
         if opcode == "LOAD":
-            # If load comes from stack or host variable
             return {
                 "ir_id": instr.get("id"),
                 "ir_opcode": opcode,
@@ -186,7 +235,10 @@ class PIMMapper:
                 "dest": dest,
                 "arg1": arg1,
                 "arg2": None,
-                "reason": f"Scalar load of variable '{arg1}' from host stack frame; dispatched by CPU memory controller.",
+                "reason": (
+                    f"Scalar variable '{arg1}' resides in the host CPU stack frame; "
+                    "accessed via host memory controller, not eligible for PIM row buffer mapping."
+                ),
                 "memory_metadata": {
                     "operation_type": "memory_load",
                     "data_type": "int",
@@ -208,7 +260,10 @@ class PIMMapper:
                 "dest": dest,
                 "arg1": arg1,
                 "arg2": None,
-                "reason": f"Scalar store of '{arg1}' into variable '{dest}' residing in host CPU stack space.",
+                "reason": (
+                    f"Scalar variable '{dest}' resides in host CPU stack space; "
+                    "stored by host CPU sequencer."
+                ),
                 "memory_metadata": {
                     "operation_type": "memory_store",
                     "data_type": "int",
@@ -220,7 +275,7 @@ class PIMMapper:
                 "formatted": f"CPU_STORE {dest}, {arg1}"
             }
 
-        # 6. Immediate Constants
+        # Rule 7: Immediate Constants (CONST) -> CPU Fallback
         if opcode == "CONST":
             return {
                 "ir_id": instr.get("id"),
@@ -231,7 +286,7 @@ class PIMMapper:
                 "dest": dest,
                 "arg1": arg1,
                 "arg2": None,
-                "reason": f"Immediate constant '{arg1}' encoded into CPU instruction stream.",
+                "reason": f"Immediate constant '{arg1}' is encoded directly into the host CPU instruction stream.",
                 "memory_metadata": {
                     "operation_type": "immediate",
                     "data_type": "int",
@@ -241,7 +296,7 @@ class PIMMapper:
                 "formatted": f"CPU_CONST {dest}, {arg1}"
             }
 
-        # 7. Control Flow (JUMP, BRANCH, LABEL, RETURN) -> CPU Fallback
+        # Rule 8: Control Flow (JUMP, BRANCH, LABEL, RETURN) -> CPU Fallback
         if opcode in ("JUMP", "BRANCH", "LABEL", "RETURN"):
             return {
                 "ir_id": instr.get("id"),
@@ -252,7 +307,10 @@ class PIMMapper:
                 "dest": dest,
                 "arg1": arg1,
                 "arg2": arg2,
-                "reason": f"Control-flow instruction sequencing and program counter updates are managed by the host CPU control unit.",
+                "reason": (
+                    "Control-flow instruction sequencing, branch evaluation, and program counter updates "
+                    "are managed exclusively by the host CPU control unit."
+                ),
                 "memory_metadata": {
                     "operation_type": "control_flow",
                     "memory_region": "host_control_unit",
@@ -261,7 +319,7 @@ class PIMMapper:
                 "formatted": instr.get("formatted", f"{opcode}")
             }
 
-        # 8. Declarations
+        # Rule 9: Declarations (DECLARE) -> CPU Fallback
         if opcode == "DECLARE":
             return {
                 "ir_id": instr.get("id"),
@@ -272,7 +330,7 @@ class PIMMapper:
                 "dest": None,
                 "arg1": arg1,
                 "arg2": None,
-                "reason": f"Variable allocation and memory layout managed by the host runtime environment.",
+                "reason": "Variable and array declaration is managed by the host runtime stack/heap layout.",
                 "memory_metadata": {
                     "operation_type": "declaration",
                     "data_type": metadata.get("data_type", "int"),
@@ -282,7 +340,7 @@ class PIMMapper:
                 "formatted": f"DECLARE {arg1} : {metadata.get('data_type', 'int')}"
             }
 
-        # 9. I/O (PRINT)
+        # Rule 10: I/O Operations (PRINT) -> CPU Fallback
         if opcode == "PRINT":
             return {
                 "ir_id": instr.get("id"),
@@ -293,7 +351,7 @@ class PIMMapper:
                 "dest": None,
                 "arg1": arg1,
                 "arg2": None,
-                "reason": "Host OS input/output system call executed exclusively by host CPU.",
+                "reason": "Standard output I/O is a host operating system system call executed by the CPU.",
                 "memory_metadata": {
                     "operation_type": "io",
                     "memory_region": "host_os",
@@ -302,7 +360,7 @@ class PIMMapper:
                 "formatted": f"CPU_PRINT {arg1}"
             }
 
-        # Fallback default
+        # Rule 11: General Fallback for Unsupported / Unrecognized Operations
         return {
             "ir_id": instr.get("id"),
             "ir_opcode": opcode,
@@ -312,7 +370,7 @@ class PIMMapper:
             "dest": dest,
             "arg1": arg1,
             "arg2": arg2,
-            "reason": "Operation not eligible for PIM offloading; executed on host CPU.",
-            "memory_metadata": {"operation_type": "unknown"},
+            "reason": f"Operation '{opcode}' is not explicitly supported by the simulated PIM model; routed to CPU fallback.",
+            "memory_metadata": {"operation_type": "fallback", "memory_region": "host_cpu"},
             "formatted": instr.get("formatted", f"{opcode}")
         }

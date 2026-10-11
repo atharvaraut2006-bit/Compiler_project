@@ -377,21 +377,50 @@ Repository is ready for review demonstration.
   * Added `IRViewer` with Formatted 3AC code display (with line numbers and clipboard copy)
     and Structured Table view with opcode filters and operand inspection.
   * Added `PIMMappingViewer` with top hardware allocation metrics cards, PIM/CPU filter buttons,
-    and a comparative decision rationale table with data region pills.
-  * All views match the existing Slate/Tailwind design tokens, light theme, and background.
+- Centralized PIM Instruction Policy (PIMPolicy in backend/compiler/pim_mapper.py):
+  * Explicit PIM-Eligible Operations:
+    - Addition: `PIM_ADD` (in-memory integer addition)
+    - Subtraction: `PIM_SUB` (in-memory integer subtraction)
+    - Multiplication: `PIM_MUL` (in-memory integer multiplication)
+    - Comparisons: `PIM_COMPARE` (relational & equality: `<`, `<=`, `>`, `>=`, `==`, `!=`)
+    - Memory Loads: `PIM_LOAD` (in-situ array row buffer read via `LOAD_INDEXED`)
+    - Memory Stores: `PIM_STORE` (in-situ bank partition write via `STORE_INDEXED`)
+  * Explicit CPU-Fallback Operations:
+    - Division: `CPU_DIV` (multi-cycle divider hardware excluded from memory banks)
+    - Modulo: `CPU_MOD` (modulo requires division circuitry)
+    - Function returns: `CPU_RETURN` (host CPU stack frame management)
+    - Loop control & branching: `CPU_BRANCH`, `CPU_JUMP`, `LABEL` (CPU controls program flow)
+    - Declarations: `DECLARE` (host runtime stack layout)
+    - Immediates: `CPU_CONST` (immediate operand loading)
+    - Scalar memory: `CPU_LOAD`, `CPU_STORE` (scalar variables reside in host CPU stack)
+    - Standard I/O: `CPU_PRINT` (host OS system call)
+    - Any unrecognized instruction: safely defaults to CPU fallback.
+  * Explicit Memory-Access Eligibility Rules:
+    - Array-indexed operations target DRAM row buffers -> PIM-eligible.
+    - Scalar accesses reside on host CPU stack frame -> CPU fallback.
+  * Mixed CPU/PIM Execution in Loops:
+    - Host CPU controls loop iteration, counter stepping, and termination checks.
+    - Compute-intensive array operations and vector arithmetic inside the loop body execute in-situ in PIM banks.
+
+- UI Table Spacing Polish:
+  * Resolved excessive blank space between table columns across all data views:
+    - Token Table: balanced column proportions (`#`: 55px, `Token Type`: 180px, `Value`: flexible/compact, `Line`: 85px, `Column`: 85px).
+    - Symbol Table: balanced widths for `Symbol Name`, `Type`, `Kind`, `Size`, `Scope Level`, `Location`.
+    - IR Table & PIM Mapping Table: compact opcode/target/operand columns with natural alignment.
+    - Eliminated unnatural horizontal gaps; all tables display crisp, evenly distributed columns.
 
 - Automated Test Verification:
-  * 49 automated pytest tests passing with 100% pass rate in 0.36s:
+  * 50 automated pytest tests passing with 100% pass rate in 0.36s:
     - `test_lexer.py`: 8 passed
     - `test_parser.py`: 9 passed
     - `test_semantic.py`: 7 passed
     - `test_ir_generator.py`: 7 passed
-    - `test_pim_mapper.py`: 7 passed
+    - `test_pim_mapper.py`: 8 passed (supported operations, fallbacks, array restrictions, mixed loops, defaults)
     - `test_compiler_orchestration.py`: 5 passed
     - `test_api.py`: 6 passed
   * Production frontend bundle compiled cleanly (`npm run build`).
 
-- Phase 3 Readiness:
-  * Structured IR instructions and PIM mappings contain complete opcodes, operands,
-    memory regions, and targets needed directly by the upcoming dual-execution cycle simulators.
+- Readiness:
+  * Phase 3 dual-execution simulators can directly interpret the mapped instructions (`PIM_*` vs `CPU_*`),
+    and Phase 4 can reuse the exact mapping decisions for modeled cycle latency and memory traffic calculations.
 ================================================================================
