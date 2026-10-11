@@ -298,4 +298,33 @@ Repository is ready for review demonstration.
   * Modern Slate/Tailwind design tokens with polished shadows and smooth transitions.
 - Fully verified with 35/35 passing unit & integration tests.
 - Rebuilt production frontend bundle and pushed all changes to GitHub.
+
+
+16. INTERACTIVE AST TREE DIAGRAM OVERHAUL (2026-10-11)
+--------------------------------------------------------------------------------
+- Implemented visual interactive Node-Link AST Tree Diagram matching the user's
+  provided specification and design:
+  * Node Cards: Rounded rectangular cards with colored borders per syntax category:
+    - Purple (#a855f7): Program, statements, function definitions, blocks, control loops
+    - Green (#10b981): Integer & numeric literals (NUMBERLITERAL)
+    - Amber (#f59e0b): Binary and unary expressions (BINARYEXPR, UNARYEXPR)
+    - Cyan (#06b6d4): Identifiers and array access nodes (IDENTIFIER, ARRAYACCESS)
+  * Top Perched Role Badges: Positioned on the top edge of each child node card
+    (e.g., `stmt 1`, `stmt 2`, `value`, `left`, `right`, `init`, `condition`, `update`, `body`).
+  * Orthogonal Connector Lines: SVG paths with strict 90-degree orthogonal routing
+    (vertical parent stem, horizontal bus bar across children, vertical child drop).
+  * Focus Dropdown: Allows viewing the "Entire Program (N statements)" or zooming
+    into individual statements (e.g. `Statement 1: int arr[4]`, `Statement 3: for ( ; ; )`).
+  * Background & Theme Matching:
+    - Default "Light Canvas": Seamlessly matches the website UI and background (#f8fafc)
+      with a subtle technical dot grid and high-contrast cards.
+    - "Dark Canvas" Toggle: Instant switch to deep slate-navy (#0b0f19) matching the
+      exact dark aesthetics from the reference design.
+  * Interactive Canvas Controls:
+    - Draggable canvas for panning across wide AST trees.
+    - Mouse wheel zoom + zoom buttons (`+`, `-`, percentage indicator).
+    - Fit & Center button to reset the view.
+    - View mode toggle between visual "Tree Diagram" and "Raw JSON".
+- Verified 35/35 pytest tests pass (100%).
+- Verified frontend build passes cleanly (`npm run build`).
 ================================================================================
