@@ -5,23 +5,37 @@ export const StageStatusPanel = ({ stages, isCompiling }) => {
     {
       id: 'lexical',
       step: '01',
-      name: 'Lexical Analysis',
-      desc: 'Tokenization & Scanners',
+      name: 'Lexical',
+      desc: 'Tokens & Scanner',
       data: stages ? stages.lexical : null
     },
     {
       id: 'syntax',
       step: '02',
-      name: 'Syntax Analysis',
-      desc: 'Recursive Descent & AST',
+      name: 'Syntax',
+      desc: 'AST Parsing',
       data: stages ? stages.syntax : null
     },
     {
       id: 'semantic',
       step: '03',
-      name: 'Semantic Analysis',
-      desc: 'Type & Symbol Validation',
+      name: 'Semantic',
+      desc: 'Symbol Scope',
       data: stages ? stages.semantic : null
+    },
+    {
+      id: 'ir',
+      step: '04',
+      name: 'IR Generation',
+      desc: '3AC Instructions',
+      data: stages ? stages.ir : null
+    },
+    {
+      id: 'pim_mapping',
+      step: '05',
+      name: 'PIM Mapping',
+      desc: 'Hardware Target',
+      data: stages ? stages.pim_mapping : null
     }
   ];
 
@@ -56,7 +70,7 @@ export const StageStatusPanel = ({ stages, isCompiling }) => {
 
   return (
     <div className="stage-pipeline-wrapper">
-      <div className="stage-pipeline-container">
+      <div className="stage-pipeline-container stage-pipeline-5">
         {stageList.map((stage, idx) => {
           const status = stage.data ? stage.data.status : (isCompiling ? 'pending' : 'idle');
           return (
@@ -76,7 +90,7 @@ export const StageStatusPanel = ({ stages, isCompiling }) => {
               </div>
               {idx < stageList.length - 1 && (
                 <div className={`pipeline-connector ${stages ? 'active' : ''}`}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M5 12h14M12 5l7 7-7 7" />
                   </svg>
                 </div>

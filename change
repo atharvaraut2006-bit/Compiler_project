@@ -23,14 +23,16 @@ Phase 1 — C Compiler Front End:
   [STATUS: FULLY IMPLEMENTED & TESTED]
 
 Phase 2 — Intermediate Representation (IR) & PIM Mapping:
-  Three-address code generation, loop/vector pattern detection, and mapping to
-  simulated PIM instructions (PIM_LOAD_ARRAY, PIM_REDUCE_SUM, etc.).
-  [STATUS: PENDING - Next Phase]
+  Three-address code (3AC) generation, temporary variable numbering, array indexing
+  operations, control flow branching, PIM eligibility analysis, simulated PIM
+  instruction mapping (PIM_ADD, PIM_SUB, PIM_MUL, PIM_LOAD, PIM_STORE, PIM_COMPARE),
+  CPU fallback routing, educational mapping rationales, and React UI inspection views.
+  [STATUS: FULLY IMPLEMENTED & TESTED]
 
 Phase 3 — CPU & PIM Simulators:
   Dual-execution cycle and memory simulators, execution trace generation, and
   semantic equivalence verification.
-  [STATUS: PENDING]
+  [STATUS: PENDING - Next Phase]
 
 Phase 4 — Performance Analysis:
   Memory bus traffic in bytes, cycle latency models, speedup formulas, and operation
@@ -49,7 +51,7 @@ Phase 6 — Testing, Evaluation & Documentation:
 
 3. CURRENT PHASE BEING IMPLEMENTED
 --------------------------------------------------------------------------------
-Phase 1: C Compiler Front End (Strictly Limited to Phase 1 Requirements).
+Phase 2: Intermediate Representation (IR) Generation and PIM Instruction Mapping.
 
 
 4. PHASE 1 FEATURES ACTUALLY COMPLETED
@@ -88,37 +90,43 @@ Backend:
   - backend/requirements.txt: Dependencies (fastapi, uvicorn, pydantic, pytest, httpx).
   - backend/pytest.ini: Test configuration disabling global asyncio conflicts.
   - backend/conftest.py: Ensures sys.path imports work reliably.
-  - backend/main.py: FastAPI REST server with CORS and error handling.
-  - backend/compiler/__init__.py: Package exports for compiler front end.
+  - backend/main.py: FastAPI REST server with CORS and compilation endpoints.
+  - backend/compiler/__init__.py: Package exports for compiler front end and IR/PIM mapper.
   - backend/compiler/ast_nodes.py: AST node definitions with JSON serialization.
   - backend/compiler/lexer.py: Tokenizer with line/col tracking and comment handling.
   - backend/compiler/parser.py: Recursive descent parser with precedence climbing.
   - backend/compiler/semantic.py: Scoped symbol table and semantic diagnostic checks.
-  - backend/compiler/compiler.py: Compiler orchestrator returning structured results.
+  - backend/compiler/ir_generator.py: Three-address-code (3AC) generator with temp/label sequencing.
+  - backend/compiler/pim_mapper.py: PIM eligibility analyzer and instruction mapper.
+  - backend/compiler/compiler.py: Full compiler orchestrator returning 5-stage pipeline results.
   - backend/tests/test_lexer.py: 8 unit tests for lexical tokenization.
   - backend/tests/test_parser.py: 9 unit tests for syntax parsing & AST.
   - backend/tests/test_semantic.py: 7 unit tests for semantic analysis.
+  - backend/tests/test_ir_generator.py: 7 unit tests for 3AC intermediate code generation.
+  - backend/tests/test_pim_mapper.py: 7 unit tests for PIM eligibility and mapping.
   - backend/tests/test_compiler_orchestration.py: 5 tests for pipeline cascades.
   - backend/tests/test_api.py: 6 integration tests for API endpoints.
 
 Frontend:
-  - frontend/package.json & package-lock.json: React 19, Vite, CodeMirror, Axios.
+  - frontend/package.json & package-lock.json: React 19, Vite, CodeMirror, Axios, React Icons.
   - frontend/vite.config.js: Vite server config with port 5173 and /api proxy.
   - frontend/src/main.jsx: Root React entrypoint.
-  - frontend/src/App.jsx: Master Phase 1 compiler workspace.
-  - frontend/src/App.css: Light professional developer interface styling.
-  - frontend/src/styles/variables.css: Academic CSS design tokens.
+  - frontend/src/App.jsx: Master developer interface with 5 inspection tabs.
+  - frontend/src/App.css: Clean developer styling, 5-stage pipeline, IR and PIM mapping views.
+  - frontend/src/styles/variables.css: Slate/Tailwind CSS design tokens.
   - frontend/src/api/client.js: Axios API client connecting to FastAPI.
-  - frontend/src/components/CodeEditor.jsx: CodeMirror C editor.
-  - frontend/src/components/ExampleSelector.jsx: Preloaded Phase 1 benchmark selector.
-  - frontend/src/components/StageStatusPanel.jsx: Visual stage status cards.
+  - frontend/src/components/CodeEditor.jsx: CodeMirror C editor with syntax highlight.
+  - frontend/src/components/ExampleSelector.jsx: Preloaded sample programs.
+  - frontend/src/components/StageStatusPanel.jsx: 5-stage pipeline stepper.
   - frontend/src/components/TokenTable.jsx: Filterable token inspection table.
-  - frontend/src/components/ASTViewer.jsx: Tree and JSON AST viewer.
+  - frontend/src/components/ASTViewer.jsx: Interactive node-link AST diagram with zoom/pan.
   - frontend/src/components/SemanticViewer.jsx: Scoped symbol table & diagnostics.
-  - frontend/src/components/LanguageSpec.jsx: Supported vs unsupported C spec.
+  - frontend/src/components/IRViewer.jsx: Structured 3AC IR table and formatted code viewer.
+  - frontend/src/components/PIMMappingViewer.jsx: Hardware allocation cards and decision table.
+  - frontend/src/components/LanguageSpec.jsx: Supported vs unsupported C subset spec.
 
 Documentation & Root:
-  - README.md: Complete project documentation and review demonstration guide.
+  - README.md: Complete project documentation.
   - change: This persistent handover record.
 
 
@@ -327,4 +335,63 @@ Repository is ready for review demonstration.
     - View mode toggle between visual "Tree Diagram" and "Raw JSON".
 - Verified 35/35 pytest tests pass (100%).
 - Verified frontend build passes cleanly (`npm run build`).
+
+
+17. PHASE 2: INTERMEDIATE REPRESENTATION & PIM MAPPING IMPLEMENTATION (2026-10-11)
+--------------------------------------------------------------------------------
+- Implemented complete Three-Address-Code (3AC) Intermediate Representation (IR):
+  * Dedicated module `backend/compiler/ir_generator.py` converting AST to 3AC instructions.
+  * Supported IR Opcodes:
+    - Declarations: `DECLARE` (scalar & fixed-size arrays)
+    - Memory & Constants: `CONST`, `LOAD`, `STORE`, `LOAD_INDEXED`, `STORE_INDEXED`
+    - Arithmetic: `ADD`, `SUB`, `MUL`, `DIV`, `MOD`
+    - Comparisons: `COMPARE_LT`, `COMPARE_LE`, `COMPARE_GT`, `COMPARE_GE`, `COMPARE_EQ`, `COMPARE_NE`
+    - Control Flow: `JUMP`, `BRANCH`, `LABEL`, `RETURN`
+    - I/O: `PRINT`
+  * Deterministic temporary register allocation (`t1`, `t2`, `t3`...) and label generation (`L1`, `L2`...).
+  * Preserves operator precedence, nested binary expressions, unary negation, array initializers,
+    indexed memory operations, and for/while loop control structures.
+  * Comprehensive memory movement metadata (operation type, data type, memory region, transfer bytes).
+
+- Implemented PIM Eligibility Analyzer & Instruction Mapper:
+  * Dedicated module `backend/compiler/pim_mapper.py` evaluating each IR instruction against explicit rules.
+  * Simulated PIM Instructions:
+    - `PIM_ADD`, `PIM_SUB`, `PIM_MUL`: Integer arithmetic executed in-situ by simulated in-memory ALU banks.
+    - `PIM_LOAD`, `PIM_STORE`: Array elements read/written directly in memory array row buffers.
+    - `PIM_COMPARE`: Condition evaluations processed by simulated in-memory comparator circuits.
+  * CPU Fallback Routing:
+    - `CPU_DIV`, `CPU_MOD`: High-latency division logic omitted from memory banks, routed to CPU.
+    - `CPU_BRANCH`, `CPU_JUMP`, `LABEL`: Instruction sequencing and program counter managed by host CPU.
+    - `DECLARE`, `CPU_CONST`, `CPU_LOAD`, `CPU_STORE`: Host stack frame and immediate loading.
+    - `CPU_PRINT`: Host operating system I/O system calls.
+  * Clear, educational hardware rationales generated for 100% of instructions.
+  * Accurate instruction allocation counts (Total, PIM Target, CPU Fallback).
+
+- FastAPI Integration:
+  * `Compiler` orchestrates 5 sequential stages: Lexical -> Syntax -> Semantic -> IR -> PIM Mapping.
+  * Failure in front-end validation safely cascades to skipped IR and mapping stages.
+  * `POST /api/compile` returns structured `ir` and `mapping` response objects.
+
+- React Interface Extensions:
+  * Upgraded `StageStatusPanel` to a 5-stage horizontal pipeline stepper.
+  * Added `IRViewer` with Formatted 3AC code display (with line numbers and clipboard copy)
+    and Structured Table view with opcode filters and operand inspection.
+  * Added `PIMMappingViewer` with top hardware allocation metrics cards, PIM/CPU filter buttons,
+    and a comparative decision rationale table with data region pills.
+  * All views match the existing Slate/Tailwind design tokens, light theme, and background.
+
+- Automated Test Verification:
+  * 49 automated pytest tests passing with 100% pass rate in 0.36s:
+    - `test_lexer.py`: 8 passed
+    - `test_parser.py`: 9 passed
+    - `test_semantic.py`: 7 passed
+    - `test_ir_generator.py`: 7 passed
+    - `test_pim_mapper.py`: 7 passed
+    - `test_compiler_orchestration.py`: 5 passed
+    - `test_api.py`: 6 passed
+  * Production frontend bundle compiled cleanly (`npm run build`).
+
+- Phase 3 Readiness:
+  * Structured IR instructions and PIM mappings contain complete opcodes, operands,
+    memory regions, and targets needed directly by the upcoming dual-execution cycle simulators.
 ================================================================================

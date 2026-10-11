@@ -6,6 +6,8 @@ import StageStatusPanel from './components/StageStatusPanel';
 import TokenTable from './components/TokenTable';
 import ASTViewer from './components/ASTViewer';
 import SemanticViewer from './components/SemanticViewer';
+import IRViewer from './components/IRViewer';
+import PIMMappingViewer from './components/PIMMappingViewer';
 import LanguageSpec from './components/LanguageSpec';
 import './styles/variables.css';
 import './App.css';
@@ -269,6 +271,26 @@ export const App = () => {
                   </span>
                 )}
               </button>
+              <button
+                className={`segmented-tab ${activeTab === 'ir' ? 'active' : ''}`}
+                onClick={() => setActiveTab('ir')}
+              >
+                Intermediate Representation
+                {compilationResult?.ir?.instructions && (
+                  <span className="tab-pill">{compilationResult.ir.instructions.length}</span>
+                )}
+              </button>
+              <button
+                className={`segmented-tab ${activeTab === 'mapping' ? 'active' : ''}`}
+                onClick={() => setActiveTab('mapping')}
+              >
+                PIM Mapping
+                {compilationResult?.mapping && (
+                  <span className="tab-pill">
+                    {compilationResult.mapping.pim_count} PIM / {compilationResult.mapping.cpu_count} CPU
+                  </span>
+                )}
+              </button>
             </div>
 
             <div className="tab-viewport">
@@ -283,7 +305,7 @@ export const App = () => {
                   </div>
                   <h3 className="placeholder-title">Ready to Compile</h3>
                   <p className="placeholder-desc">
-                    Enter C code or select a sample, then click <strong>Compile & Analyze</strong> to inspect tokens, the abstract syntax tree, and symbol table.
+                    Enter C code or select a sample, then click <strong>Compile & Analyze</strong> to inspect tokens, the abstract syntax tree, 3AC intermediate representation, and PIM hardware mapping.
                   </p>
                 </div>
               ) : (
@@ -299,6 +321,12 @@ export const App = () => {
                       symbolTable={compilationResult.symbol_table}
                       diagnostics={compilationResult.diagnostics}
                     />
+                  )}
+                  {activeTab === 'ir' && (
+                    <IRViewer ir={compilationResult.ir} />
+                  )}
+                  {activeTab === 'mapping' && (
+                    <PIMMappingViewer mapping={compilationResult.mapping} />
                   )}
                 </>
               )}

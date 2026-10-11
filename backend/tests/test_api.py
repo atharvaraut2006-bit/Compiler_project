@@ -42,8 +42,13 @@ def test_api_compile_valid_code():
     assert data["stages"]["lexical"]["status"] == "success"
     assert data["stages"]["syntax"]["status"] == "success"
     assert data["stages"]["semantic"]["status"] == "success"
+    assert data["stages"]["ir"]["status"] == "success"
+    assert data["stages"]["pim_mapping"]["status"] == "success"
     assert len(data["tokens"]) > 0
     assert data["ast"] is not None
+    assert len(data["ir"]["instructions"]) > 0
+    assert data["mapping"]["pim_count"] > 0
+    assert data["mapping"]["cpu_count"] > 0
 
 
 def test_api_compile_syntax_error():

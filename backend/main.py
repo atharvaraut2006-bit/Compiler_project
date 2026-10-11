@@ -1,5 +1,5 @@
 """
-FastAPI Server for Phase 1: C Compiler Front End.
+FastAPI Server for Compiler for Processing in Memory.
 Provides compilation, examples, and health check endpoints.
 """
 import sys
@@ -116,8 +116,8 @@ def get_examples():
 @app.post("/api/compile")
 def compile_code(req: CompileRequest):
     """
-    Runs Phase 1 Compiler Front End pipeline:
-    Source -> Lexer -> Parser -> AST -> Semantic Analyzer
+    Runs compilation pipeline:
+    Source -> Lexer -> Parser -> AST -> Semantic Analyzer -> IR -> PIM Mapping
     """
     result = compiler_instance.compile(req.source_code)
     return result
