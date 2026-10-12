@@ -306,7 +306,7 @@ class WorkloadAnalyzer:
                     total += 4
                 elif isinstance(n, ArrayDecl):
                     total += n.size * 4
-                for field in ("declarations", "statements", "body", "then_branch", "else_branch"):
+                for field in ("declarations", "statements", "body", "then_branch", "else_branch", "init"):
                     val = getattr(n, field, None)
                     if isinstance(val, list):
                         for item in val:
