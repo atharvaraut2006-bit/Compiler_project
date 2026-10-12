@@ -66,6 +66,11 @@ export const App = () => {
     }
   }, [sourceCode]);
 
+  // Auto-compile default program on initial mount so all stages & simulation are loaded
+  useEffect(() => {
+    handleCompile();
+  }, []);
+
   // Support Ctrl+Enter / Cmd+Enter shortcut
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -78,9 +83,31 @@ export const App = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleCompile]);
 
-  const handleExampleSelect = (code) => {
+  const handleSelectStage = (stageId) => {
+    const map = {
+      lexical: 'tokens',
+      syntax: 'ast',
+      semantic: 'semantic',
+      ir: 'ir',
+      pim_mapping: 'mapping',
+      simulation: 'simulation'
+    };
+    if (map[stageId]) {
+      setActiveTab(map[stageId]);
+    }
+  };
+
+  const handleExampleSelect = async (code) => {
     setSourceCode(code);
-    setCompilationResult(null);
+    setIsCompiling(true);
+    try {
+      const result = await compileCode(code);
+      setCompilationResult(result);
+    } catch (err) {
+      console.error('Example compilation error:', err);
+    } finally {
+      setIsCompiling(false);
+    }
   };
 
   const handleReset = () => {
@@ -211,6 +238,7 @@ export const App = () => {
             <StageStatusPanel
               stages={compilationResult ? compilationResult.stages : null}
               isCompiling={isCompiling}
+              onSelectStage={handleSelectStage}
             />
           </div>
 

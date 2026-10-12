@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const StageStatusPanel = ({ stages, isCompiling }) => {
+export const StageStatusPanel = ({ stages, isCompiling, onSelectStage }) => {
   const stageList = [
     {
       id: 'lexical',
@@ -78,10 +78,16 @@ export const StageStatusPanel = ({ stages, isCompiling }) => {
   return (
     <div className="stage-pipeline-wrapper">
       <div className="stage-pipeline-container stage-pipeline-6">
-        {stageList.map((stage, idx) => {
+        {stageList.map((stage) => {
           const status = stage.data ? stage.data.status : (isCompiling ? 'pending' : 'idle');
           return (
-            <div key={stage.id} className={`pipeline-step-card step-${status}`}>
+            <div
+              key={stage.id}
+              className={`pipeline-step-card step-${status}`}
+              onClick={() => onSelectStage && onSelectStage(stage.id)}
+              style={{ cursor: onSelectStage ? 'pointer' : 'default' }}
+              title={`Click to inspect Stage ${stage.step}: ${stage.name}`}
+            >
               <div className="step-top-row">
                 <span className="step-number">{stage.step}</span>
                 {getStatusIndicator(status)}
