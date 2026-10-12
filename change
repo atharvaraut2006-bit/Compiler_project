@@ -469,7 +469,10 @@ Repository is ready for review demonstration.
       * Middle section: 5-Stage Compilation Pipeline spanning full width. All 5 cards (`Lexical`, `Syntax`, `Semantic`, `IR Generation`, `PIM Mapping`) fit side-by-side in one line without clipping or horizontal scroll; wraps cleanly into a responsive grid below 860px.
       * Diagnostics callout banner displayed cleanly between pipeline and results when issues occur.
       * Bottom section: Results & Inspection Panel spanning full width. Segmented tabs wrap gracefully (`flex-wrap: wrap`), giving the Strategy Comparison Matrix, AST Tree Diagram, and Tables ample room to display without cramped columns.
-    - Added Header Layout Switcher button (`[ Vertical View ]` / `[ Split View ]`) allowing users on ultrawide monitors to toggle between vertical and split views, with Vertical View active by default.
+    - Strictly Vertical Flow (Landscape mode completely removed):
+      * Completely eliminated side-by-side grid and split view.
+      * Code Editor (top), 5-Stage Pipeline (middle), and Tabbed Inspection Panels (bottom) stack vertically in one single cohesive column.
+      * Pipeline cards arranged in a responsive 5-column CSS grid (`repeat(5, minmax(0, 1fr))`) without wide connectors, eliminating horizontal scroll on any window width.
 
 - Automated Test Verification:
   * 58 automated pytest tests passing with 100% pass rate in 0.35s:

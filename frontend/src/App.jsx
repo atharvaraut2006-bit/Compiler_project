@@ -29,7 +29,6 @@ export const App = () => {
   const [compilationResult, setCompilationResult] = useState(null);
   const [activeTab, setActiveTab] = useState('tokens'); // 'tokens', 'ast', 'semantic'
   const [showSpec, setShowSpec] = useState(false);
-  const [layoutMode, setLayoutMode] = useState('vertical'); // 'vertical' (stacked) default, or 'split'
 
   const handleCompile = useCallback(async () => {
     if (!sourceCode.trim()) {
@@ -117,29 +116,6 @@ export const App = () => {
 
         <div className="header-actions">
           <button
-            className={`btn btn-ghost btn-sm ${layoutMode === 'vertical' ? 'active' : ''}`}
-            onClick={() => setLayoutMode((prev) => (prev === 'vertical' ? 'split' : 'vertical'))}
-            title="Switch between Vertical Scrolling (Default) and Split Side-by-Side View"
-          >
-            {layoutMode === 'vertical' ? (
-              <>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="3" width="18" height="8" rx="2" />
-                  <rect x="3" y="13" width="18" height="8" rx="2" />
-                </svg>
-                <span>Vertical View</span>
-              </>
-            ) : (
-              <>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="3" width="8" height="18" rx="2" />
-                  <rect x="13" y="3" width="8" height="18" rx="2" />
-                </svg>
-                <span>Split View</span>
-              </>
-            )}
-          </button>
-          <button
             className={`btn btn-ghost btn-sm ${showSpec ? 'active' : ''}`}
             onClick={() => setShowSpec(!showSpec)}
           >
@@ -162,9 +138,9 @@ export const App = () => {
         </section>
       )}
 
-      {/* Main Workspace Layout */}
-      <main className={`workspace-main ${layoutMode === 'vertical' ? 'layout-vertical' : 'layout-split'}`}>
-        {/* Code Editor Section */}
+      {/* Main Vertical Workspace Layout */}
+      <main className="workspace-main">
+        {/* Top: Code Editor Section */}
         <section className="editor-column">
           <div className="panel editor-card">
             <div className="editor-toolbar">
@@ -181,7 +157,7 @@ export const App = () => {
               <CodeEditor
                 value={sourceCode}
                 onChange={(val) => setSourceCode(val)}
-                height={layoutMode === 'vertical' ? '320px' : '480px'}
+                height="320px"
               />
             </div>
 

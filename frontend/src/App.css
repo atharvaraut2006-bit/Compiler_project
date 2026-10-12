@@ -132,55 +132,33 @@
   border: 1px solid var(--border);
 }
 
-/* Workspace Main Layout */
+/* Workspace Main Layout - Strictly Vertical Flow (Zero Landscape, Zero Horizontal Overflow) */
 .workspace-main {
   flex: 1;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-/* Vertical Layout (Default & Preferred: Smooth vertical scrolling, zero horizontal overflow) */
-.workspace-main.layout-vertical {
   display: flex;
   flex-direction: column;
   gap: 1.35rem;
-  max-width: 1200px;
+  max-width: 1080px;
   width: 100%;
   margin: 0 auto;
-  padding: 1.25rem 1.5rem 3.5rem 1.5rem;
+  padding: 1.25rem 1.5rem 4rem 1.5rem;
+  box-sizing: border-box;
 }
 
-.workspace-main.layout-vertical .editor-column {
+.editor-column {
   width: 100%;
 }
 
-.workspace-main.layout-vertical .editor-card {
+.editor-card {
   height: auto;
   overflow: visible;
 }
 
-.workspace-main.layout-vertical .output-column {
+.output-column {
   width: 100%;
   display: flex;
   flex-direction: column;
   gap: 1.35rem;
-}
-
-/* Split Side-by-Side Layout (Optional view for ultrawide displays) */
-.workspace-main.layout-split {
-  display: grid;
-  grid-template-columns: 1fr 1.15fr;
-  gap: 1.25rem;
-  padding: 1.25rem 1.75rem;
-  max-width: 1600px;
-  width: 100%;
-  margin: 0 auto;
-}
-
-@media (max-width: 1100px) {
-  .workspace-main.layout-split {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* Panels */
@@ -446,29 +424,28 @@
 }
 
 .stage-pipeline-container {
-  display: flex;
-  align-items: stretch;
-  gap: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.65rem;
   width: 100%;
-}
-
-.pipeline-step-card {
-  flex: 1 1 0;
-  background-color: #f8fafc;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.65rem 0.8rem;
-  min-width: 110px;
   box-sizing: border-box;
-  transition: all 0.2s ease;
 }
 
 @media (max-width: 860px) {
   .stage-pipeline-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 0.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   }
+}
+
+.pipeline-step-card {
+  width: 100%;
+  background-color: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  min-width: 0;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
 }
 
 .pipeline-step-card:hover {
@@ -528,23 +505,6 @@
 
 .step-skipped {
   opacity: 0.6;
-}
-
-.pipeline-connector {
-  color: #cbd5e1;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-@media (max-width: 860px) {
-  .pipeline-connector {
-    display: none;
-  }
-}
-
-.pipeline-connector.active {
-  color: #94a3b8;
 }
 
 /* Status Pills */

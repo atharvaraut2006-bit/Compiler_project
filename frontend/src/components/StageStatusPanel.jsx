@@ -74,28 +74,19 @@ export const StageStatusPanel = ({ stages, isCompiling }) => {
         {stageList.map((stage, idx) => {
           const status = stage.data ? stage.data.status : (isCompiling ? 'pending' : 'idle');
           return (
-            <React.Fragment key={stage.id}>
-              <div className={`pipeline-step-card step-${status}`}>
-                <div className="step-top-row">
-                  <span className="step-number">{stage.step}</span>
-                  {getStatusIndicator(status)}
-                </div>
-                <div className="step-name">{stage.name}</div>
-                <div className="step-desc">{stage.desc}</div>
-                {stage.data && stage.data.message && (
-                  <div className="step-meta" title={stage.data.message}>
-                    {stage.data.message}
-                  </div>
-                )}
+            <div key={stage.id} className={`pipeline-step-card step-${status}`}>
+              <div className="step-top-row">
+                <span className="step-number">{stage.step}</span>
+                {getStatusIndicator(status)}
               </div>
-              {idx < stageList.length - 1 && (
-                <div className={`pipeline-connector ${stages ? 'active' : ''}`}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M5 12h14M12 5l7 7-7 7" />
-                  </svg>
+              <div className="step-name">{stage.name}</div>
+              <div className="step-desc">{stage.desc}</div>
+              {stage.data && stage.data.message && (
+                <div className="step-meta" title={stage.data.message}>
+                  {stage.data.message}
                 </div>
               )}
-            </React.Fragment>
+            </div>
           );
         })}
       </div>
