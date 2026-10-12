@@ -571,5 +571,39 @@ PHASE 3 IMPLEMENTATION & VERCEL DIAGNOSTICS ENCOUNTERED RESOLUTION
     - `test_correctness.py`: 4 passed (array sum pass, sample 2 pass, divergence detection, error divergence).
     - `test_api.py`: 7 passed (health, examples, compile, syntax error, semantic error, empty code, simulate endpoint).
     - Plus all 52 prior compiler, parser, lexer, and cost-model tests.
-  * Clean frontend build with Vite (`npm run build`).
+================================================================================
+DATE: 2026-10-12
+HOTFIX: AST HIERARCHY TREE RESTORATION & SIMULATION VERDICT EQUIVALENCE (PASS)
+================================================================================
+
+- Root Cause Analysis of User Issue:
+  1. AST Tree Hierarchy Truncation:
+     - In `frontend/src/api/localCompiler.js`, `localParse` generated function bodies as a flat array (`body: [ ... ]`) rather than a `Block` node containing `statements: [ ... ]`.
+     - `ASTViewer.jsx` looked specifically for `func.body?.statements` to extract the function's statements.
+     - Because `func.body?.statements` was undefined, `ASTViewer.jsx` fell back to rendering only the top `FUNCTIONDEF int main()` node with 0 children, causing the tree diagram to show only `PROGRAM (1 statement) -> FUNCTIONDEF int main()` without any statements or expressions inside.
+  2. Simulation Displaying "FAIL":
+     - In `localCompiler.js`, `localMapPIM` marked `DECLARE` instructions as `CPU_DECLARE`.
+     - In `localRunPIM`, the simulator matched only `mappedOp === "DECLARE"`, so it completely skipped variable and array allocation.
+     - Array elements `arr[i]` were never initialized into DRAM, causing `PIM_LOAD` to return 0 on every loop iteration.
+     - Consequently, CPU finished with `sum: 100` while PIM finished with `sum: 0`.
+     - The correctness comparator flagged this discrepancy as a semantic divergence, returning `verdict: "FAIL"`.
+
+- Fixes Applied:
+  1. Complete AST Schema Alignment in `localCompiler.js`:
+     - Rewrote `localParse` to output the exact AST schema matching the backend Python parser:
+       * `Program`: `body: [ { node_type: "FunctionDef", name: "main", return_type: "int", params: [], body: { node_type: "Block", statements: [...] } } ]`
+       * `ArrayDecl`: `type_name: "int"`, `name: "arr"`, `size: 4`, `initializers: [ { node_type: "IntLiteral", value: 10 }, ... ]`
+       * `VarDecl`: `type_name: "int"`, `name: "sum"`, `initializer: { node_type: "IntLiteral", value: 0 }`
+       * `ForLoop`: `init: VarDecl`, `condition: BinaryOp`, `update: UnaryOp`, `body: Block { statements: [ Assignment { target: Identifier, value: BinaryOp { left: Identifier, right: ArrayAccess } } ] }`
+       * `ReturnStatement`: `value: { node_type: "IntLiteral", value: 0 }`
+  2. Defensively Enhanced `ASTViewer.jsx`:
+     - Made `convertASTNode` and `getStatementList` handle both `node.body?.statements` and array-based bodies (`Array.isArray(node.body)`).
+     - Guarantees that regardless of representation, all children statements, expressions, loops, and conditions are fully visualized in the tree.
+  3. Execution Simulation Parity & Automatic PASS:
+     - Fixed `localRunPIM` to handle `DECLARE` and `CPU_DECLARE`, correctly allocating and initializing DRAM arrays and stack variables.
+     - Both CPU and PIM simulators now execute Sample 1 and Sample 2 with 100% semantic identity:
+       * Return Value: Identical (`0` for Sample 1, `70` for Sample 2).
+       * Variables: Identical (`{ sum: 100, i: 4 }` for Sample 1, `{ x: 15, y: 25, total: 70 }` for Sample 2).
+       * DRAM Arrays: Identical (`{ arr: [10, 20, 30, 40] }`).
+       * Verdict: `PASS` (Emerald green banner: `✓ VERIFIED: PASS`).
 ================================================================================

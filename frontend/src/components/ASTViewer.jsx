@@ -15,8 +15,9 @@ function convertASTNode(node, badge = '', index = 0) {
     case 'Program': {
       const stmts = [];
       const func = node.body?.find((b) => b.node_type === 'FunctionDef');
-      if (func && func.body?.statements) {
-        func.body.statements.forEach((s, idx) => {
+      const innerStmts = func ? (func.body?.statements || (Array.isArray(func.body) ? func.body : [])) : [];
+      if (func && innerStmts.length > 0) {
+        innerStmts.forEach((s, idx) => {
           stmts.push(convertASTNode(s, `stmt ${idx + 1}`, idx));
         });
       } else if (node.body) {
@@ -37,11 +38,10 @@ function convertASTNode(node, badge = '', index = 0) {
 
     case 'FunctionDef': {
       const children = [];
-      if (node.body?.statements) {
-        node.body.statements.forEach((s, idx) => {
-          children.push(convertASTNode(s, `stmt ${idx + 1}`, idx));
-        });
-      }
+      const innerStmts = node.body?.statements || (Array.isArray(node.body) ? node.body : []);
+      innerStmts.forEach((s, idx) => {
+        children.push(convertASTNode(s, `stmt ${idx + 1}`, idx));
+      });
       return {
         id: `fn_${node.name || 'main'}`,
         badge: badge || 'func',
@@ -399,8 +399,9 @@ function getStatementList(rawAst) {
 
   if (rawAst.node_type === 'Program') {
     const func = rawAst.body?.find((b) => b.node_type === 'FunctionDef');
-    if (func && func.body?.statements) {
-      func.body.statements.forEach((s, idx) => addStmt(s, idx));
+    const innerStmts = func ? (func.body?.statements || (Array.isArray(func.body) ? func.body : [])) : [];
+    if (func && innerStmts.length > 0) {
+      innerStmts.forEach((s, idx) => addStmt(s, idx));
     } else if (rawAst.body) {
       rawAst.body.forEach((s, idx) => addStmt(s, idx));
     }
