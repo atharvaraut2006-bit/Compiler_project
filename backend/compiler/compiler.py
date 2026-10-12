@@ -10,6 +10,7 @@ from .parser import Parser, ParserError
 from .semantic import SemanticAnalyzer, SemanticError
 from .ir_generator import IRGenerator
 from .pim_mapper import PIMMapper
+from .simulation_runner import SimulationRunner
 
 
 class Compiler:
@@ -30,6 +31,11 @@ class Compiler:
         """
         empty_ir = {"instructions": [], "formatted": "", "instruction_count": 0}
         empty_mapping = {"instructions": [], "pim_count": 0, "cpu_count": 0, "unsupported_count": 0, "total_instructions": 0, "summary": {"total": 0, "pim_allocated": 0, "cpu_fallback": 0}}
+        empty_simulation = {
+            "cpu": {"status": "SKIPPED", "return_value": None, "final_variables": {}, "final_arrays": {}, "output": [], "execution_trace": [], "total_steps": 0},
+            "pim": {"status": "SKIPPED", "return_value": None, "final_variables": {}, "final_arrays": {}, "output": [], "execution_trace": [], "total_steps": 0, "pim_steps": 0, "cpu_steps": 0},
+            "comparison": {"verdict": "SKIPPED", "is_match": False, "status": "SKIPPED", "reason": "Simulation skipped.", "discrepancies": []}
+        }
 
         if not source_code or not source_code.strip():
             return {
@@ -40,7 +46,8 @@ class Compiler:
                     "syntax": {"status": "skipped", "message": "Skipped due to empty input."},
                     "semantic": {"status": "skipped", "message": "Skipped due to empty input."},
                     "ir": {"status": "skipped", "message": "Skipped due to empty input."},
-                    "pim_mapping": {"status": "skipped", "message": "Skipped due to empty input."}
+                    "pim_mapping": {"status": "skipped", "message": "Skipped due to empty input."},
+                    "simulation": {"status": "skipped", "message": "Skipped due to empty input."}
                 },
                 "tokens": [],
                 "ast": None,
@@ -48,6 +55,7 @@ class Compiler:
                 "diagnostics": [{"severity": "error", "message": "Source code cannot be empty.", "line": 1, "column": 1}],
                 "ir": empty_ir,
                 "mapping": empty_mapping,
+                "simulation": empty_simulation,
                 "supported_language": self.SUPPORTED_SUBSET
             }
 
@@ -70,7 +78,8 @@ class Compiler:
                     "syntax": {"status": "skipped", "message": "Skipped due to lexical error."},
                     "semantic": {"status": "skipped", "message": "Skipped due to lexical error."},
                     "ir": {"status": "skipped", "message": "Skipped due to lexical error."},
-                    "pim_mapping": {"status": "skipped", "message": "Skipped due to lexical error."}
+                    "pim_mapping": {"status": "skipped", "message": "Skipped due to lexical error."},
+                    "simulation": {"status": "skipped", "message": "Skipped due to lexical error."}
                 },
                 "tokens": [],
                 "ast": None,
@@ -78,6 +87,7 @@ class Compiler:
                 "diagnostics": [{"severity": "error", "message": e.message, "line": e.line, "column": e.column}],
                 "ir": empty_ir,
                 "mapping": empty_mapping,
+                "simulation": empty_simulation,
                 "supported_language": self.SUPPORTED_SUBSET
             }
 
@@ -99,7 +109,8 @@ class Compiler:
                     "syntax": {"status": "error", "message": str(e)},
                     "semantic": {"status": "skipped", "message": "Skipped due to syntax error."},
                     "ir": {"status": "skipped", "message": "Skipped due to syntax error."},
-                    "pim_mapping": {"status": "skipped", "message": "Skipped due to syntax error."}
+                    "pim_mapping": {"status": "skipped", "message": "Skipped due to syntax error."},
+                    "simulation": {"status": "skipped", "message": "Skipped due to syntax error."}
                 },
                 "tokens": token_dicts,
                 "ast": None,
@@ -107,6 +118,7 @@ class Compiler:
                 "diagnostics": [{"severity": "error", "message": e.message, "line": e.line, "column": e.column}],
                 "ir": empty_ir,
                 "mapping": empty_mapping,
+                "simulation": empty_simulation,
                 "supported_language": self.SUPPORTED_SUBSET
             }
 
@@ -124,7 +136,8 @@ class Compiler:
                     "syntax": stage_syntax,
                     "semantic": {"status": "error", "message": first_err},
                     "ir": {"status": "skipped", "message": "Skipped due to semantic error."},
-                    "pim_mapping": {"status": "skipped", "message": "Skipped due to semantic error."}
+                    "pim_mapping": {"status": "skipped", "message": "Skipped due to semantic error."},
+                    "simulation": {"status": "skipped", "message": "Skipped due to semantic error."}
                 },
                 "tokens": token_dicts,
                 "ast": ast_dict,
@@ -132,6 +145,7 @@ class Compiler:
                 "diagnostics": semantic_res["diagnostics"],
                 "ir": empty_ir,
                 "mapping": empty_mapping,
+                "simulation": empty_simulation,
                 "supported_language": self.SUPPORTED_SUBSET
             }
 
@@ -157,7 +171,8 @@ class Compiler:
                     "syntax": stage_syntax,
                     "semantic": stage_semantic,
                     "ir": {"status": "error", "message": str(e)},
-                    "pim_mapping": {"status": "skipped", "message": "Skipped due to IR failure."}
+                    "pim_mapping": {"status": "skipped", "message": "Skipped due to IR failure."},
+                    "simulation": {"status": "skipped", "message": "Skipped due to IR failure."}
                 },
                 "tokens": token_dicts,
                 "ast": ast_dict,
@@ -165,6 +180,7 @@ class Compiler:
                 "diagnostics": semantic_res["diagnostics"] + [{"severity": "error", "message": f"IR Generation failed: {str(e)}", "line": 1, "column": 1}],
                 "ir": empty_ir,
                 "mapping": empty_mapping,
+                "simulation": empty_simulation,
                 "supported_language": self.SUPPORTED_SUBSET
             }
 
@@ -185,7 +201,8 @@ class Compiler:
                     "syntax": stage_syntax,
                     "semantic": stage_semantic,
                     "ir": stage_ir,
-                    "pim_mapping": {"status": "error", "message": str(e)}
+                    "pim_mapping": {"status": "error", "message": str(e)},
+                    "simulation": {"status": "skipped", "message": "Skipped due to PIM mapping failure."}
                 },
                 "tokens": token_dicts,
                 "ast": ast_dict,
@@ -194,7 +211,23 @@ class Compiler:
                 "ir": ir_res,
                 "mapping": empty_mapping,
                 "optimization": {},
+                "simulation": empty_simulation,
                 "supported_language": self.SUPPORTED_SUBSET
+            }
+
+        # Stage 6: Dual CPU / PIM Execution Simulation
+        try:
+            runner = SimulationRunner()
+            sim_res = runner.run(ir_res["instructions"], mapping_res["instructions"])
+            stage_sim = {
+                "status": "success" if sim_res["comparison"]["status"] != "ERROR" else "error",
+                "message": f"Simulation {sim_res['comparison']['verdict']}. CPU: {sim_res['cpu']['total_steps']} steps, PIM: {sim_res['pim']['total_steps']} steps ({sim_res['pim']['pim_steps']} in-situ)."
+            }
+        except Exception as e:
+            sim_res = empty_simulation
+            stage_sim = {
+                "status": "error",
+                "message": f"Simulation failed: {str(e)}"
             }
 
         # Complete Pipeline Succeeded!
@@ -206,7 +239,8 @@ class Compiler:
                 "syntax": stage_syntax,
                 "semantic": stage_semantic,
                 "ir": stage_ir,
-                "pim_mapping": stage_pim
+                "pim_mapping": stage_pim,
+                "simulation": stage_sim
             },
             "tokens": token_dicts,
             "ast": ast_dict,
@@ -215,5 +249,6 @@ class Compiler:
             "ir": ir_res,
             "mapping": mapping_res,
             "optimization": mapping_res.get("optimization", {}),
+            "simulation": sim_res,
             "supported_language": self.SUPPORTED_SUBSET
         }

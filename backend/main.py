@@ -18,13 +18,15 @@ if str(_current_dir.parent) not in sys.path:
 
 try:
     from .compiler.compiler import Compiler
+    from .compiler.simulation_runner import SimulationRunner
 except (ImportError, ValueError):
     from compiler.compiler import Compiler
+    from compiler.simulation_runner import SimulationRunner
 
 
 app = FastAPI(
     title="Compiler for Processing in Memory",
-    description="Compiler Front End for C Subset",
+    description="Compiler Front End for C Subset with CPU and PIM Simulators",
     version="1.0.0"
 )
 
@@ -37,12 +39,19 @@ app.add_middleware(
 )
 
 compiler_instance = Compiler()
+simulation_runner_instance = SimulationRunner()
 
 
 # --- Request Models ---
 
 class CompileRequest(BaseModel):
     source_code: str
+
+
+class SimulateRequest(BaseModel):
+    source_code: Optional[str] = None
+    ir_instructions: Optional[List[Dict[str, Any]]] = None
+    mapped_instructions: Optional[List[Dict[str, Any]]] = None
 
 
 # --- Example Programs ---
@@ -135,10 +144,28 @@ def download_cost_model_pdf():
 def compile_code(req: CompileRequest):
     """
     Runs compilation pipeline:
-    Source -> Lexer -> Parser -> AST -> Semantic Analyzer -> IR -> PIM Mapping
+    Source -> Lexer -> Parser -> AST -> Semantic Analyzer -> IR -> PIM Mapping -> Simulation
     """
     result = compiler_instance.compile(req.source_code)
     return result
+
+
+@app.post("/api/simulate")
+def simulate_code(req: SimulateRequest):
+    """
+    Runs dual CPU and PIM simulations with correctness comparison.
+    Accepts either raw source_code or pre-generated ir_instructions + mapped_instructions.
+    """
+    if req.source_code:
+        comp_res = compiler_instance.compile(req.source_code)
+        if not comp_res.get("success"):
+            raise HTTPException(status_code=400, detail=comp_res.get("error", "Compilation failed"))
+        return comp_res.get("simulation")
+
+    if req.ir_instructions is not None and req.mapped_instructions is not None:
+        return simulation_runner_instance.run(req.ir_instructions, req.mapped_instructions)
+
+    raise HTTPException(status_code=400, detail="Must provide either source_code or ir_instructions and mapped_instructions")
 
 
 if __name__ == "__main__":

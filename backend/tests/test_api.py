@@ -77,3 +77,24 @@ def test_api_compile_empty_code():
     data = response.json()
     assert data["success"] is False
     assert data["stages"]["lexical"]["status"] == "error"
+
+
+def test_api_simulate_endpoint():
+    code = """int main() {
+    int arr[4] = {10, 20, 30, 40};
+    int sum = 0;
+    for (int i = 0; i < 4; i++) {
+        sum = sum + arr[i];
+    }
+    return sum;
+}"""
+    response = client.post("/api/simulate", json={"source_code": code})
+    assert response.status_code == 200
+    data = response.json()
+    assert "cpu" in data
+    assert "pim" in data
+    assert "comparison" in data
+    assert data["comparison"]["verdict"] == "PASS"
+    assert data["cpu"]["return_value"] == 100
+    assert data["pim"]["return_value"] == 100
+

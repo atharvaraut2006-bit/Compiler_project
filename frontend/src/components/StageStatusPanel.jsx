@@ -36,6 +36,13 @@ export const StageStatusPanel = ({ stages, isCompiling }) => {
       name: 'PIM Mapping',
       desc: 'Hardware Target',
       data: stages ? stages.pim_mapping : null
+    },
+    {
+      id: 'simulation',
+      step: '06',
+      name: 'Simulation',
+      desc: 'CPU & PIM Dual Run',
+      data: stages ? stages.simulation : null
     }
   ];
 
@@ -70,7 +77,7 @@ export const StageStatusPanel = ({ stages, isCompiling }) => {
 
   return (
     <div className="stage-pipeline-wrapper">
-      <div className="stage-pipeline-container stage-pipeline-5">
+      <div className="stage-pipeline-container stage-pipeline-6">
         {stageList.map((stage, idx) => {
           const status = stage.data ? stage.data.status : (isCompiling ? 'pending' : 'idle');
           return (

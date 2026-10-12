@@ -147,6 +147,7 @@ class PIMMapper:
         dest = instr.get("dest")
         arg1 = instr.get("arg1")
         arg2 = instr.get("arg2")
+        arg3 = instr.get("arg3")
         metadata = instr.get("metadata", {})
 
         # Rule 1: Array-indexed Memory Loads (PIM_LOAD)
@@ -352,6 +353,7 @@ class PIMMapper:
                 "dest": dest,
                 "arg1": arg1,
                 "arg2": arg2,
+                "arg3": arg3,
                 "reason": (
                     "Control-flow instruction sequencing, branch evaluation, and program counter updates "
                     "are managed exclusively by the host CPU control unit."
@@ -375,6 +377,7 @@ class PIMMapper:
                 "dest": None,
                 "arg1": arg1,
                 "arg2": None,
+                "arg3": None,
                 "reason": "Variable and array declaration is managed by the host runtime stack/heap layout.",
                 "memory_metadata": {
                     "operation_type": "declaration",
@@ -396,6 +399,7 @@ class PIMMapper:
                 "dest": None,
                 "arg1": arg1,
                 "arg2": None,
+                "arg3": None,
                 "reason": "Standard output I/O is a host operating system system call executed by the CPU.",
                 "memory_metadata": {
                     "operation_type": "io",
@@ -415,6 +419,7 @@ class PIMMapper:
             "dest": dest,
             "arg1": arg1,
             "arg2": arg2,
+            "arg3": arg3,
             "reason": f"Operation '{opcode}' is not explicitly supported by the simulated PIM model; routed to CPU fallback.",
             "memory_metadata": {"operation_type": "fallback", "memory_region": "host_cpu"},
             "formatted": instr.get("formatted", f"{opcode}")

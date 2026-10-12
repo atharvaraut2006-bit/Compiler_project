@@ -8,6 +8,7 @@ import ASTViewer from './components/ASTViewer';
 import SemanticViewer from './components/SemanticViewer';
 import IRViewer from './components/IRViewer';
 import PIMMappingViewer from './components/PIMMappingViewer';
+import SimulationViewer from './components/SimulationViewer';
 import LanguageSpec from './components/LanguageSpec';
 import './styles/variables.css';
 import './App.css';
@@ -166,18 +167,9 @@ export const App = () => {
                 <span className="status-item">{lineCount} lines</span>
                 <span className="status-divider">•</span>
                 <span className="status-item">{charCount} characters</span>
-                <span className="status-divider">•</span>
-                <span className="status-item">UTF-8</span>
               </div>
 
               <div className="statusbar-actions">
-                <button
-                  className="btn btn-outline btn-sm"
-                  onClick={handleReset}
-                  disabled={isCompiling}
-                >
-                  Clear
-                </button>
                 <button
                   className="btn btn-primary btn-run"
                   onClick={handleCompile}
@@ -291,6 +283,17 @@ export const App = () => {
                   </span>
                 )}
               </button>
+              <button
+                className={`segmented-tab ${activeTab === 'simulation' ? 'active' : ''}`}
+                onClick={() => setActiveTab('simulation')}
+              >
+                Execution Simulation
+                {compilationResult?.simulation?.comparison?.verdict && (
+                  <span className={`tab-pill ${compilationResult.simulation.comparison.verdict === 'PASS' ? 'tab-pill-success' : 'tab-pill-warning'}`}>
+                    {compilationResult.simulation.comparison.verdict}
+                  </span>
+                )}
+              </button>
             </div>
 
             <div className="tab-viewport">
@@ -305,7 +308,7 @@ export const App = () => {
                   </div>
                   <h3 className="placeholder-title">Ready to Compile</h3>
                   <p className="placeholder-desc">
-                    Enter C code or select a sample, then click <strong>Compile & Analyze</strong> to inspect tokens, the abstract syntax tree, 3AC intermediate representation, and PIM hardware mapping.
+                    Enter C code or select a sample, then click <strong>Compile & Analyze</strong> to inspect tokens, the abstract syntax tree, 3AC intermediate representation, PIM hardware mapping, and dual execution simulation.
                   </p>
                 </div>
               ) : (
@@ -327,6 +330,9 @@ export const App = () => {
                   )}
                   {activeTab === 'mapping' && (
                     <PIMMappingViewer mapping={compilationResult.mapping} />
+                  )}
+                  {activeTab === 'simulation' && (
+                    <SimulationViewer simulation={compilationResult.simulation} />
                   )}
                 </>
               )}
