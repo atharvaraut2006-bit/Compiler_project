@@ -654,3 +654,113 @@ HOTFIX: SYMBOL TABLE TYPE, KIND, SIZE, AND SCOPE DISPLAY
      - Added `.kind-func` badge styling (`background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0`).
      - Added `.size-badge` styling with monospaced font formatting.
 ================================================================================
+================================================================================
+DATE: 2026-10-12
+PHASE 3 COMPLETE: CPU AND PIM EXECUTION SIMULATOR WITH INTERACTIVE ANIMATION
+================================================================================
+
+1. OVERALL SIMULATION DESIGN & ARCHITECTURE
+--------------------------------------------------------------------------------
+Phase 3 has been fully implemented as a software-based dual execution simulator
+with an interactive step-by-step animated visualization in the React frontend.
+The platform runs real backend and client simulation traces, strictly executing
+supported 3AC IR and PIM-mapped instructions with 100% semantic equivalence.
+
+2. INTERACTIVE SIMULATION DASHBOARD (frontend/src/components/SimulationViewer.jsx)
+--------------------------------------------------------------------------------
+- Section Title: "CPU vs PIM Execution Simulator"
+- Subtitle: "Visualize how your compiled program executes across CPU and Processing-in-Memory operations."
+- Top Controls Toolbar:
+  * "Run Simulation": Triggers compilation/simulation rerun and initializes step sequence.
+  * "Play / Pause": Automatically advances through recorded trace entries with smooth state updates.
+  * "Previous Step" & "Next Step": Manual granular stepping backward and forward.
+  * "Restart": Returns playback to Step 1 and resets processor highlight states.
+  * Speed Selector: Slow (1200ms), Normal (600ms), and Fast (220ms).
+  * Step Indicator: "Step X of Y" with dynamic count.
+  * Animated Progress Bar: Reflects exact percentage of execution timeline completed.
+  * Proper React lifecycle cleanup: interval timers cleanly cleared on pause, restart, step, or unmount.
+
+- Current Instruction Details Card:
+  * Step index badge (`Step #X`), processor pill (`PIM ALU` vs `CPU Core`), status pill (`✓ SUCCESS`).
+  * Raw IR instruction format (`PIM_ADD t3, sum, t1` or `LOAD_INDEXED t1, arr[i]`).
+  * High-level operation semantic description.
+  * Input operands with runtime resolved values (`sum = 30`, `arr[2] = 30`).
+  * Evaluated expression and produced result (`sum = 30 + 30 = 60`).
+  * Target updated variable or memory location with highlighted state badges.
+
+- Dual Processor Visualizations (Side-by-Side on Desktop, Stacked on Mobile):
+  * CPU Simulator Panel:
+    - Host Processor (von Neumann Core) representation.
+    - Active highlight (`.unit-card-active .active-cpu` with blue border and glow) when CPU executes.
+    - Status badges: `● EXECUTING`, `○ IDLE (PIM Active)`, or `✓ COMPLETED`.
+    - Host Stack Variables view: live values of `sum`, `i`, etc. Updated variable glows green (`.var-tile-updated`).
+    - Completed CPU operations mini-history: recent 4 completed instructions.
+  * PIM Simulator Panel:
+    - Near-Memory Accelerator (DRAM Bank ALU) representation.
+    - Active highlight (`.unit-card-active .active-pim` with emerald border and glow) when PIM executes.
+    - Status badges: `● IN-SITU PROCESSING`, `○ IDLE (CPU Active)`, or `✓ COMPLETED`.
+    - DRAM Bank Array Memory View: visual array partitions with element indices, values, and status.
+      Highlights active read (`● In-situ Read`) or bank write (`● Bank Write`) during load/store steps.
+    - Completed PIM operations mini-history: recent 4 completed in-situ instructions.
+  * Inter-Processor Event Banners:
+    - Explicit `⚡ CPU Fallback Event` banner explaining rationale (e.g., control-flow branching, immediate constants).
+    - Explicit `⇄ Near-Memory In-Situ Access` banner for DRAM row buffer transfers without bus latency.
+
+- Interactive Dynamic Execution Trace Timeline:
+  * Ordered timeline table of all executed steps.
+  * Active step row highlighted (`.active-step-row` with blue border and `▶ #X`).
+  * Clicking ANY step jumps the animation and processor states directly to that step.
+  * Switcher between Mixed PIM Trace and Pure CPU Trace.
+  * Filter chips: `All`, `PIM In-Situ`, and `CPU Fallback`.
+  * Real-time search filter.
+
+- Final Correctness Comparison & State Equivalence Inspector:
+  * Executive Verdict Banner: `✓ VERIFIED: PASS` (or `✗ DIVERGENCE: FAIL` / `⚠ FAULT: ERROR`).
+  * Clear explanation in plain English.
+  * Scalar Variables equivalence tab.
+  * DRAM Arrays equivalence tab.
+  * Standard Output equivalence tab.
+
+3. BACKEND ENHANCEMENTS & TRACE FORMAT
+--------------------------------------------------------------------------------
+- Enhanced `backend/compiler/pim_simulator.py` and `backend/compiler/cpu_simulator.py`:
+  * Enriched trace schema:
+    - `step`: 1-based sequential step index.
+    - `pc`: Program counter index.
+    - `processor`: "PIM" or "CPU".
+    - `mapped_instruction`: Mapped opcode mnemonic (`PIM_ADD`, `PIM_LOAD`, `CPU_STORE`, etc.).
+    - `formatted_instruction`: Formatted 3AC instruction string.
+    - `dest`, `arg1`, `arg2`: Operands.
+    - `arg1_val`, `arg2_val`: Evaluated numeric values of operands.
+    - `updated_var`: Name of updated variable, if any.
+    - `read_array`: `{ name, index, value }` if array element was read.
+    - `updated_array`: `{ name, index, value }` if array element was written.
+    - `is_fallback`: Boolean indicating CPU fallback.
+    - `fallback_reason`: Detailed architectural rationale.
+    - `is_transfer`: Boolean indicating DRAM row buffer or bus movement.
+    - `transfer_desc`: Description of memory movement.
+    - `operation_desc`: Human-readable formula with values.
+    - `result_value`: Numeric output.
+    - `status`: "SUCCESS" or "ERROR".
+    - `variables_snapshot`: Dictionary of variables at step.
+    - `arrays_snapshot`: Dictionary of array contents at step.
+
+4. CLIENT-SIDE COMPILER & SIMULATION FALLBACK (frontend/src/api/localCompiler.js)
+--------------------------------------------------------------------------------
+- Enriched `localRunCPU` and `localRunPIM` with identical schema:
+  * Real-time `arrays_snapshot` deep-cloning per step.
+  * Exact operand runtime resolution (`arg1Val`, `arg2Val`).
+  * Memory access tracking (`readArray`, `updatedArray`, `updatedVar`).
+  * Seamless parity with backend Python simulators.
+
+5. VERIFICATION & TEST RESULTS
+--------------------------------------------------------------------------------
+- Test Suite:
+  * All 73 pytest tests passing in 1.34s (100% pass rate).
+  * Added `test_pim_simulator_trace_fields` to verify all enriched trace attributes.
+- Node.js End-to-End Simulation Tests:
+  * Array Sum Loop: `sum = 100`, `i = 4`, `arr = [10, 20, 30, 40]`, `Verdict = PASS`.
+  * Sample 2 Branching: `total = 70`, `Verdict = PASS`.
+- Frontend Build:
+  * Vite production build succeeded in 215ms (`dist/`).
+================================================================================

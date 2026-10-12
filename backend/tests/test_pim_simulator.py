@@ -103,3 +103,56 @@ def test_pim_simulator_array_write_and_read():
     assert exec_res["status"] == "SUCCESS"
     assert exec_res["return_value"] == 99
     assert exec_res["final_arrays"]["arr"] == [1, 99, 3]
+
+
+def test_pim_simulator_trace_fields():
+    """Verify enriched trace fields required for step-by-step interactive animation."""
+    compiler = Compiler()
+    code = """
+    int main() {
+        int arr[4] = {10, 20, 30, 40};
+        int sum = 0;
+        for (int i = 0; i < 4; i++) {
+            sum = sum + arr[i];
+        }
+        return sum;
+    }
+    """
+    res = compiler.compile(code)
+    sim = PIMSimulator()
+    exec_res = sim.run(res["mapping"]["instructions"])
+
+    trace = exec_res["execution_trace"]
+    assert len(trace) > 0
+
+    # Check that each step contains all required animation metadata
+    for step in trace:
+        assert "step" in step
+        assert "pc" in step
+        assert "processor" in step
+        assert step["processor"] in ("PIM", "CPU")
+        assert "mapped_instruction" in step
+        assert "formatted_instruction" in step
+        assert "is_fallback" in step
+        assert "status" in step
+        assert step["status"] == "SUCCESS"
+        assert "variables_snapshot" in step
+        assert "arrays_snapshot" in step
+
+    # Verify PIM row buffer read step has read_array and is_transfer
+    pim_load_steps = [s for s in trace if s["mapped_instruction"] == "PIM_LOAD"]
+    assert len(pim_load_steps) == 4
+    for pls in pim_load_steps:
+        assert pls["read_array"] is not None
+        assert pls["read_array"]["name"] == "arr"
+        assert pls["is_transfer"] is True
+
+    # Verify PIM ALU addition steps (4 for array sum accumulation + 4 for loop counter increment)
+    pim_add_steps = [s for s in trace if s["mapped_instruction"] == "PIM_ADD"]
+    assert len(pim_add_steps) == 8
+    for pas in pim_add_steps:
+        assert pas["processor"] == "PIM"
+        assert pas["arg1_val"] is not None
+        assert pas["arg2_val"] is not None
+        assert pas["result_value"] is not None
+

@@ -155,6 +155,11 @@ class CPUSimulator:
         arg3 = instr.get("arg3")
         line = instr.get("line")
 
+        updated_var = None
+        read_array = None
+        updated_array = None
+        arg1_val = None
+        arg2_val = None
         op_desc = ""
         res_val = None
         next_pc = self.pc + 1
@@ -176,11 +181,13 @@ class CPUSimulator:
                         size = 0
                 size = size or 0
                 self.arrays[arr_name] = [0] * size
+                updated_array = {"name": arr_name, "size": size, "value": self.arrays[arr_name]}
                 op_desc = f"Allocated array '{arr_name}' of size {size}"
             else:
                 var_name = meta.get("var_name") or arg1
                 if var_name:
                     self.variables[var_name] = 0
+                    updated_var = var_name
                 op_desc = f"Declared variable '{var_name}' = 0"
 
         # -------------------------------------------------------------
@@ -188,6 +195,7 @@ class CPUSimulator:
         # -------------------------------------------------------------
         elif opcode == "CONST":
             val = self._resolve(arg1)
+            arg1_val = val
             if dest:
                 self.temporaries[dest] = val
             res_val = val
@@ -198,6 +206,7 @@ class CPUSimulator:
         # -------------------------------------------------------------
         elif opcode == "LOAD":
             val = self.variables.get(arg1, 0)
+            arg1_val = val
             if dest:
                 self.temporaries[dest] = val
             res_val = val
@@ -205,8 +214,10 @@ class CPUSimulator:
 
         elif opcode == "STORE":
             val = self._resolve(arg1)
+            arg1_val = val
             if dest:
                 self.variables[dest] = val
+                updated_var = dest
             res_val = val
             op_desc = f"{dest} = {val}"
 
@@ -216,6 +227,8 @@ class CPUSimulator:
         elif opcode == "LOAD_INDEXED":
             arr_name = arg1
             idx = self._resolve(arg2)
+            arg1_val = arr_name
+            arg2_val = idx
             if arr_name not in self.arrays:
                 raise SimulationError(f"Array '{arr_name}' accessed before declaration", pc=self.pc, instruction=instr)
 
@@ -231,12 +244,15 @@ class CPUSimulator:
             if dest:
                 self.temporaries[dest] = val
             res_val = val
+            read_array = {"name": arr_name, "index": idx, "value": val}
             op_desc = f"{dest} = {arr_name}[{idx}] ({val})"
 
         elif opcode == "STORE_INDEXED":
             arr_name = dest
             idx = self._resolve(arg1)
             val = self._resolve(arg2)
+            arg1_val = idx
+            arg2_val = val
             if arr_name not in self.arrays:
                 raise SimulationError(f"Array '{arr_name}' accessed before declaration", pc=self.pc, instruction=instr)
 
@@ -250,6 +266,7 @@ class CPUSimulator:
 
             arr[idx] = val
             res_val = val
+            updated_array = {"name": arr_name, "index": idx, "value": val}
             op_desc = f"{arr_name}[{idx}] = {val}"
 
         # -------------------------------------------------------------
@@ -371,17 +388,26 @@ class CPUSimulator:
             raise SimulationError(f"Unsupported instruction opcode '{opcode}'", pc=self.pc, instruction=instr)
 
         # Record trace entry
+        formatted_str = instr.get("formatted") or f"{opcode} {dest or ''} {arg1 or ''} {arg2 or ''}".strip()
         self.trace.append({
             "step": self.steps + 1,
             "pc": self.pc,
             "ir_id": instr.get("id"),
             "opcode": opcode,
+            "mapped_instruction": opcode,
+            "formatted_instruction": formatted_str,
             "dest": dest,
             "arg1": arg1,
             "arg2": arg2,
+            "arg1_val": arg1_val,
+            "arg2_val": arg2_val,
+            "updated_var": updated_var,
+            "read_array": read_array,
+            "updated_array": updated_array,
             "processor": "CPU",
             "operation_desc": op_desc,
             "result_value": res_val,
+            "status": "SUCCESS",
             "variables_snapshot": dict(self.variables),
             "arrays_snapshot": {k: list(v) for k, v in self.arrays.items()},
             "line": line

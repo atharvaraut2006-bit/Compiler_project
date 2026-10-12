@@ -163,6 +163,13 @@ class PIMSimulator:
         line = item.get("line")
         fallback_reason = item.get("reason") if not is_pim else None
 
+        updated_var = None
+        read_array = None
+        updated_array = None
+        arg1_val = None
+        arg2_val = None
+        is_transfer = False
+        transfer_desc = None
         op_desc = ""
         res_val = None
         next_pc = self.pc + 1
@@ -181,6 +188,8 @@ class PIMSimulator:
             # Array read directly from DRAM row buffer
             arr_name = arg1
             idx = self._resolve(arg2)
+            arg1_val = arr_name
+            arg2_val = idx
             if arr_name not in self.arrays:
                 raise SimulationError(f"Array '{arr_name}' accessed before declaration", pc=self.pc, instruction=item)
 
@@ -196,6 +205,9 @@ class PIMSimulator:
             if dest:
                 self.temporaries[dest] = val
             res_val = val
+            read_array = {"name": arr_name, "index": idx, "value": val}
+            is_transfer = True
+            transfer_desc = f"In-situ Row Buffer Read: {arr_name}[{idx}] = {val}"
             op_desc = f"[PIM Row-Buffer Read] {dest} = {arr_name}[{idx}] ({val})"
 
         elif mapped_op == "PIM_STORE":
@@ -203,6 +215,8 @@ class PIMSimulator:
             arr_name = dest
             idx = self._resolve(arg1)
             val = self._resolve(arg2)
+            arg1_val = idx
+            arg2_val = val
             if arr_name not in self.arrays:
                 raise SimulationError(f"Array '{arr_name}' accessed before declaration", pc=self.pc, instruction=item)
 
@@ -216,11 +230,16 @@ class PIMSimulator:
 
             arr[idx] = val
             res_val = val
+            updated_array = {"name": arr_name, "index": idx, "value": val}
+            is_transfer = True
+            transfer_desc = f"In-situ Bank Write: {arr_name}[{idx}] = {val}"
             op_desc = f"[PIM Bank Write] {arr_name}[{idx}] = {val}"
 
         elif mapped_op in ("PIM_ADD", "PIM_SUB", "PIM_MUL"):
             v1 = self._resolve(arg1)
             v2 = self._resolve(arg2)
+            arg1_val = v1
+            arg2_val = v2
 
             if mapped_op == "PIM_ADD":
                 res = v1 + v2
@@ -240,6 +259,8 @@ class PIMSimulator:
         elif mapped_op == "PIM_COMPARE":
             v1 = self._resolve(arg1)
             v2 = self._resolve(arg2)
+            arg1_val = v1
+            arg2_val = v2
 
             if ir_opcode == "COMPARE_LT":
                 res = 1 if v1 < v2 else 0
@@ -285,15 +306,18 @@ class PIMSimulator:
                         size = 0
                 size = size or 0
                 self.arrays[arr_name] = [0] * size
+                updated_array = {"name": arr_name, "size": size, "value": self.arrays[arr_name]}
                 op_desc = f"[CPU Decl] Allocated DRAM buffer '{arr_name}' of size {size}"
             else:
                 var_name = meta.get("var_name") or arg1
                 if var_name:
                     self.variables[var_name] = 0
+                    updated_var = var_name
                 op_desc = f"[CPU Decl] Stack variable '{var_name}' = 0"
 
         elif mapped_op in ("CPU_CONST", "CONST"):
             val = self._resolve(arg1)
+            arg1_val = val
             if dest:
                 self.temporaries[dest] = val
             res_val = val
@@ -301,6 +325,7 @@ class PIMSimulator:
 
         elif mapped_op in ("CPU_LOAD", "LOAD"):
             val = self.variables.get(arg1, 0)
+            arg1_val = val
             if dest:
                 self.temporaries[dest] = val
             res_val = val
@@ -308,14 +333,18 @@ class PIMSimulator:
 
         elif mapped_op in ("CPU_STORE", "STORE"):
             val = self._resolve(arg1)
+            arg1_val = val
             if dest:
                 self.variables[dest] = val
+                updated_var = dest
             res_val = val
             op_desc = f"[CPU Stack Store] {dest} = {val}"
 
         elif mapped_op in ("CPU_DIV", "DIV", "CPU_MOD", "MOD"):
             v1 = self._resolve(arg1)
             v2 = self._resolve(arg2)
+            arg1_val = v1
+            arg2_val = v2
             if v2 == 0:
                 raise SimulationError(
                     f"{'Division' if 'DIV' in mapped_op else 'Modulo'} by zero on CPU core",
@@ -347,6 +376,7 @@ class PIMSimulator:
 
         elif mapped_op in ("CPU_BRANCH", "BRANCH"):
             cond_val = self._resolve(arg1)
+            arg1_val = cond_val
             target_true = arg2
             target_false = arg3
 
@@ -366,6 +396,7 @@ class PIMSimulator:
 
         elif mapped_op in ("CPU_RETURN", "RETURN"):
             val = self._resolve(arg1) if arg1 is not None else 0
+            arg1_val = val
             self.return_value = val
             self.halted = True
             res_val = val
@@ -373,6 +404,7 @@ class PIMSimulator:
 
         elif mapped_op in ("CPU_PRINT", "PRINT"):
             val = self._resolve(arg1)
+            arg1_val = val
             self.output.append(str(val))
             res_val = val
             op_desc = f"[CPU I/O Print] {val}"
@@ -381,19 +413,29 @@ class PIMSimulator:
             raise SimulationError(f"Unsupported simulated instruction '{mapped_op}'", pc=self.pc, instruction=item)
 
         # Record mixed trace step
+        formatted_str = item.get("formatted") or f"{mapped_op} {dest or ''} {arg1 or ''} {arg2 or ''}".strip()
         self.trace.append({
             "step": self.steps + 1,
             "pc": self.pc,
             "ir_id": item.get("ir_id"),
             "processor": processor,
             "mapped_instruction": mapped_op,
+            "formatted_instruction": formatted_str,
             "is_fallback": not is_pim,
             "fallback_reason": fallback_reason,
+            "is_transfer": is_transfer,
+            "transfer_desc": transfer_desc,
             "dest": dest,
             "arg1": arg1,
             "arg2": arg2,
+            "arg1_val": arg1_val,
+            "arg2_val": arg2_val,
+            "updated_var": updated_var,
+            "read_array": read_array,
+            "updated_array": updated_array,
             "operation_desc": op_desc,
             "result_value": res_val,
+            "status": "SUCCESS",
             "variables_snapshot": dict(self.variables),
             "arrays_snapshot": {k: list(v) for k, v in self.arrays.items()},
             "line": line

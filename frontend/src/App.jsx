@@ -332,7 +332,11 @@ export const App = () => {
                     <PIMMappingViewer mapping={compilationResult.mapping} />
                   )}
                   {activeTab === 'simulation' && (
-                    <SimulationViewer simulation={compilationResult.simulation} />
+                    <SimulationViewer
+                      simulation={compilationResult.simulation}
+                      onReRunSimulation={() => handleCompile(false)}
+                      isCompiling={isCompiling}
+                    />
                   )}
                 </>
               )}

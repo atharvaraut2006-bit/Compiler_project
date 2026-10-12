@@ -917,57 +917,79 @@ function localRunCPU(instructions) {
     let nextPc = pc + 1;
     let opDesc = "";
     let resVal = null;
+    let updatedVar = null;
+    let readArray = null;
+    let updatedArray = null;
+    let arg1Val = null;
+    let arg2Val = null;
 
     if (op === "DECLARE") {
       if (item.metadata?.is_array || String(item.arg1).includes("[")) {
         const name = String(item.arg1).split("[")[0];
         const size = parseInt(String(item.arg1).split("[")[1]?.split("]")[0] || "4");
         arrays[name] = new Array(size).fill(0);
+        updatedArray = { name, size, value: [...arrays[name]] };
         opDesc = `Allocated DRAM buffer '${name}' of size ${size}`;
       } else {
         vars[item.arg1] = 0;
+        updatedVar = item.arg1;
         opDesc = `Stack variable '${item.arg1}' = 0`;
       }
     } else if (op === "CONST") {
       const v = resolve(item.arg1);
+      arg1Val = v;
       temps[item.dest] = v;
       resVal = v;
       opDesc = `${item.dest} = ${v}`;
     } else if (op === "LOAD") {
       const v = vars[item.arg1] !== undefined ? vars[item.arg1] : 0;
+      arg1Val = v;
       temps[item.dest] = v;
       resVal = v;
       opDesc = `${item.dest} = ${item.arg1} (${v})`;
     } else if (op === "STORE") {
       const v = resolve(item.arg1);
+      arg1Val = v;
       vars[item.dest] = v;
+      updatedVar = item.dest;
       resVal = v;
       opDesc = `${item.dest} = ${v}`;
     } else if (op === "STORE_INDEXED") {
       const arrName = item.dest;
       const idx = resolve(item.arg1);
       const v = resolve(item.arg2);
+      arg1Val = idx;
+      arg2Val = v;
       if (!arrays[arrName]) arrays[arrName] = [];
       arrays[arrName][idx] = v;
+      updatedArray = { name: arrName, index: idx, value: v };
       resVal = v;
       opDesc = `${arrName}[${idx}] = ${v}`;
     } else if (op === "LOAD_INDEXED") {
       const arrName = item.arg1;
       const idx = resolve(item.arg2);
+      arg1Val = arrName;
+      arg2Val = idx;
       const v = (arrays[arrName] && arrays[arrName][idx] !== undefined) ? arrays[arrName][idx] : 0;
       temps[item.dest] = v;
       resVal = v;
+      readArray = { name: arrName, index: idx, value: v };
       opDesc = `${item.dest} = ${arrName}[${idx}] (${v})`;
     } else if (["ADD", "SUB", "MUL"].includes(op)) {
       const v1 = resolve(item.arg1);
       const v2 = resolve(item.arg2);
+      arg1Val = v1;
+      arg2Val = v2;
       const res = op === "ADD" ? v1 + v2 : op === "SUB" ? v1 - v2 : v1 * v2;
       temps[item.dest] = res;
       resVal = res;
-      opDesc = `${item.dest} = ${v1} ${op === 'ADD' ? '+' : op === 'SUB' ? '-' : '*'} ${v2} -> ${res}`;
+      const sym = op === "ADD" ? "+" : op === "SUB" ? "-" : "*";
+      opDesc = `${item.dest} = ${v1} ${sym} ${v2} -> ${res}`;
     } else if (op.startsWith("COMPARE_")) {
       const v1 = resolve(item.arg1);
       const v2 = resolve(item.arg2);
+      arg1Val = v1;
+      arg2Val = v2;
       const res = op === "COMPARE_LT" ? (v1 < v2 ? 1 : 0) : op === "COMPARE_GT" ? (v1 > v2 ? 1 : 0) : 0;
       temps[item.dest] = res;
       resVal = res;
@@ -979,6 +1001,7 @@ function localRunCPU(instructions) {
       opDesc = `Jump -> ${item.arg1}`;
     } else if (op === "BRANCH") {
       const cond = resolve(item.arg1);
+      arg1Val = cond;
       if (cond !== 0) {
         if (labelToPc[item.arg2] !== undefined) nextPc = labelToPc[item.arg2];
         opDesc = `Branch ${item.arg1}(${cond}) TRUE -> ${item.arg2}`;
@@ -988,11 +1011,13 @@ function localRunCPU(instructions) {
       }
     } else if (op === "PRINT") {
       const v = resolve(item.arg1);
+      arg1Val = v;
       output.push(String(v));
       resVal = v;
       opDesc = `Print ${v}`;
     } else if (op === "RETURN") {
       retVal = resolve(item.arg1);
+      arg1Val = retVal;
       resVal = retVal;
       opDesc = `Return ${retVal}`;
       steps++;
@@ -1000,9 +1025,22 @@ function localRunCPU(instructions) {
         step: steps,
         pc,
         opcode: op,
+        mapped_instruction: op,
+        formatted_instruction: item.formatted || `RETURN ${retVal}`,
+        processor: "CPU",
+        dest: item.dest,
+        arg1: item.arg1,
+        arg2: item.arg2,
+        arg1_val: arg1Val,
+        arg2_val: arg2Val,
+        updated_var: updatedVar,
+        read_array: readArray,
+        updated_array: updatedArray,
         operation_desc: opDesc,
         result_value: resVal,
-        variables_snapshot: { ...vars }
+        status: "SUCCESS",
+        variables_snapshot: { ...vars },
+        arrays_snapshot: JSON.parse(JSON.stringify(arrays))
       });
       break;
     }
@@ -1012,12 +1050,22 @@ function localRunCPU(instructions) {
       step: steps,
       pc,
       opcode: op,
+      mapped_instruction: op,
+      formatted_instruction: item.formatted || `${op} ${item.dest || ''} ${item.arg1 || ''}`.trim(),
+      processor: "CPU",
       dest: item.dest,
       arg1: item.arg1,
       arg2: item.arg2,
+      arg1_val: arg1Val,
+      arg2_val: arg2Val,
+      updated_var: updatedVar,
+      read_array: readArray,
+      updated_array: updatedArray,
       operation_desc: opDesc,
       result_value: resVal,
-      variables_snapshot: { ...vars }
+      status: "SUCCESS",
+      variables_snapshot: { ...vars },
+      arrays_snapshot: JSON.parse(JSON.stringify(arrays))
     });
 
     pc = nextPc;
@@ -1070,6 +1118,13 @@ function localRunPIM(mappedInstructions) {
     let nextPc = pc + 1;
     let opDesc = "";
     let resVal = null;
+    let updatedVar = null;
+    let readArray = null;
+    let updatedArray = null;
+    let arg1Val = null;
+    let arg2Val = null;
+    let isTransfer = false;
+    let transferDesc = null;
 
     if (isPim) pimSteps++;
     else cpuSteps++;
@@ -1079,29 +1134,43 @@ function localRunPIM(mappedInstructions) {
         const name = String(item.arg1).split("[")[0];
         const size = parseInt(String(item.arg1).split("[")[1]?.split("]")[0] || "4");
         arrays[name] = new Array(size).fill(0);
+        updatedArray = { name, size, value: [...arrays[name]] };
         opDesc = `[CPU Decl] Allocated DRAM buffer '${name}' of size ${size}`;
       } else {
         vars[item.arg1] = 0;
+        updatedVar = item.arg1;
         opDesc = `[CPU Decl] Stack variable '${item.arg1}' = 0`;
       }
     } else if (mappedOp === "PIM_LOAD" || rawOp === "LOAD_INDEXED") {
       const arrName = item.arg1;
       const idx = resolve(item.arg2);
+      arg1Val = arrName;
+      arg2Val = idx;
       const v = (arrays[arrName] && arrays[arrName][idx] !== undefined) ? arrays[arrName][idx] : 0;
       temps[item.dest] = v;
       resVal = v;
+      readArray = { name: arrName, index: idx, value: v };
+      isTransfer = true;
+      transferDesc = `In-situ Row Buffer Read: ${arrName}[${idx}] = ${v}`;
       opDesc = `[PIM Row-Buffer Read] ${item.dest} = ${arrName}[${idx}] (${v})`;
     } else if (mappedOp === "PIM_STORE" || rawOp === "STORE_INDEXED") {
       const arrName = item.dest;
       const idx = resolve(item.arg1);
       const v = resolve(item.arg2);
+      arg1Val = idx;
+      arg2Val = v;
       if (!arrays[arrName]) arrays[arrName] = [];
       arrays[arrName][idx] = v;
+      updatedArray = { name: arrName, index: idx, value: v };
       resVal = v;
+      isTransfer = true;
+      transferDesc = `In-situ Bank Write: ${arrName}[${idx}] = ${v}`;
       opDesc = `[PIM Bank Write] ${arrName}[${idx}] = ${v}`;
     } else if (mappedOp === "PIM_ADD" || rawOp === "ADD") {
       const v1 = resolve(item.arg1);
       const v2 = resolve(item.arg2);
+      arg1Val = v1;
+      arg2Val = v2;
       const res = v1 + v2;
       temps[item.dest] = res;
       resVal = res;
@@ -1109,6 +1178,8 @@ function localRunPIM(mappedInstructions) {
     } else if (mappedOp === "PIM_SUB" || rawOp === "SUB") {
       const v1 = resolve(item.arg1);
       const v2 = resolve(item.arg2);
+      arg1Val = v1;
+      arg2Val = v2;
       const res = v1 - v2;
       temps[item.dest] = res;
       resVal = res;
@@ -1116,6 +1187,8 @@ function localRunPIM(mappedInstructions) {
     } else if (mappedOp === "PIM_MUL" || rawOp === "MUL") {
       const v1 = resolve(item.arg1);
       const v2 = resolve(item.arg2);
+      arg1Val = v1;
+      arg2Val = v2;
       const res = v1 * v2;
       temps[item.dest] = res;
       resVal = res;
@@ -1123,23 +1196,29 @@ function localRunPIM(mappedInstructions) {
     } else if (mappedOp === "PIM_COMPARE" || rawOp.startsWith("COMPARE_")) {
       const v1 = resolve(item.arg1);
       const v2 = resolve(item.arg2);
+      arg1Val = v1;
+      arg2Val = v2;
       const res = rawOp === "COMPARE_GT" ? (v1 > v2 ? 1 : 0) : (v1 < v2 ? 1 : 0);
       temps[item.dest] = res;
       resVal = res;
       opDesc = `[PIM Compare] ${item.dest} = (${v1} cmp ${v2}) -> ${res}`;
     } else if (mappedOp.includes("CONST") || rawOp === "CONST") {
       const v = resolve(item.arg1);
+      arg1Val = v;
       temps[item.dest] = v;
       resVal = v;
       opDesc = `[CPU Const] ${item.dest} = ${v}`;
     } else if (rawOp === "LOAD" || mappedOp.includes("LOAD")) {
       const v = vars[item.arg1] !== undefined ? vars[item.arg1] : 0;
+      arg1Val = v;
       temps[item.dest] = v;
       resVal = v;
       opDesc = `[CPU Load] ${item.dest} = ${item.arg1} (${v})`;
     } else if (rawOp === "STORE" || mappedOp.includes("STORE")) {
       const v = resolve(item.arg1);
+      arg1Val = v;
       vars[item.dest] = v;
+      updatedVar = item.dest;
       resVal = v;
       opDesc = `[CPU Store] ${item.dest} = ${v}`;
     } else if (rawOp === "LABEL" || mappedOp === "LABEL") {
@@ -1149,6 +1228,7 @@ function localRunPIM(mappedInstructions) {
       opDesc = `[CPU Jump] -> ${item.arg1}`;
     } else if (rawOp === "BRANCH" || mappedOp.includes("BRANCH")) {
       const cond = resolve(item.arg1);
+      arg1Val = cond;
       if (cond !== 0) {
         if (labelToPc[item.arg2] !== undefined) nextPc = labelToPc[item.arg2];
         opDesc = `[CPU Branch] ${item.arg1}(${cond}) TRUE -> ${item.arg2}`;
@@ -1158,11 +1238,13 @@ function localRunPIM(mappedInstructions) {
       }
     } else if (rawOp === "PRINT" || mappedOp.includes("PRINT")) {
       const v = resolve(item.arg1);
+      arg1Val = v;
       output.push(String(v));
       resVal = v;
       opDesc = `[CPU Print] ${v}`;
     } else if (rawOp === "RETURN" || mappedOp.includes("RETURN")) {
       retVal = resolve(item.arg1);
+      arg1Val = retVal;
       resVal = retVal;
       opDesc = `[CPU Return] ${retVal}`;
       steps++;
@@ -1171,9 +1253,24 @@ function localRunPIM(mappedInstructions) {
         pc,
         processor: isPim ? "PIM" : "CPU",
         mapped_instruction: mappedOp,
+        formatted_instruction: item.formatted || `CPU_RETURN ${retVal}`,
+        is_fallback: !isPim,
+        fallback_reason: item.reason || (isPim ? null : "Host CPU execution"),
+        is_transfer: false,
+        transfer_desc: null,
+        dest: item.dest,
+        arg1: item.arg1,
+        arg2: item.arg2,
+        arg1_val: arg1Val,
+        arg2_val: arg2Val,
+        updated_var: updatedVar,
+        read_array: readArray,
+        updated_array: updatedArray,
         operation_desc: opDesc,
         result_value: resVal,
-        variables_snapshot: { ...vars }
+        status: "SUCCESS",
+        variables_snapshot: { ...vars },
+        arrays_snapshot: JSON.parse(JSON.stringify(arrays))
       });
       break;
     }
@@ -1184,12 +1281,24 @@ function localRunPIM(mappedInstructions) {
       pc,
       processor: isPim ? "PIM" : "CPU",
       mapped_instruction: mappedOp,
+      formatted_instruction: item.formatted || `${mappedOp} ${item.dest || ''} ${item.arg1 || ''}`.trim(),
+      is_fallback: !isPim,
+      fallback_reason: item.reason || (isPim ? null : "Host CPU execution"),
+      is_transfer: isTransfer,
+      transfer_desc: transferDesc,
       dest: item.dest,
       arg1: item.arg1,
       arg2: item.arg2,
+      arg1_val: arg1Val,
+      arg2_val: arg2Val,
+      updated_var: updatedVar,
+      read_array: readArray,
+      updated_array: updatedArray,
       operation_desc: opDesc,
       result_value: resVal,
-      variables_snapshot: { ...vars }
+      status: "SUCCESS",
+      variables_snapshot: { ...vars },
+      arrays_snapshot: JSON.parse(JSON.stringify(arrays))
     });
 
     pc = nextPc;
