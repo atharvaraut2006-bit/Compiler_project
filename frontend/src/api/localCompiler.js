@@ -557,12 +557,15 @@ function localSemanticAnalyze(ast) {
       symbols[node.name] = {
         name: node.name,
         type: "function",
-        data_type: "int",
+        type_name: node.return_type || "int",
+        data_type: node.return_type || "int",
         scope: "global",
+        scope_level: 0,
         is_array: false,
         size: null,
         initialized: true,
-        line: node.line
+        line: node.line || 1,
+        column: node.column || 1
       };
       if (node.body?.statements) {
         node.body.statements.forEach(child => walk(child, "local"));
@@ -571,23 +574,29 @@ function localSemanticAnalyze(ast) {
       symbols[node.name] = {
         name: node.name,
         type: "array",
-        data_type: "int",
+        type_name: `${node.type_name || "int"}[]`,
+        data_type: node.type_name || "int",
         scope,
+        scope_level: scope === "global" ? 0 : 1,
         is_array: true,
-        size: node.size,
+        size: node.size || 4,
         initialized: true,
-        line: node.line
+        line: node.line || 2,
+        column: node.column || 5
       };
     } else if (node.node_type === "VarDecl") {
       symbols[node.name] = {
         name: node.name,
         type: "variable",
-        data_type: "int",
+        type_name: node.type_name || "int",
+        data_type: node.type_name || "int",
         scope,
+        scope_level: scope === "global" ? 0 : 1,
         is_array: false,
-        size: null,
+        size: 4,
         initialized: true,
-        line: node.line
+        line: node.line || 3,
+        column: node.column || 5
       };
     } else if (node.node_type === "ForLoop") {
       if (node.init) walk(node.init, "local");

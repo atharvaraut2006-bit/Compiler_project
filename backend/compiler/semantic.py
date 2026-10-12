@@ -56,6 +56,9 @@ class Symbol:
         return {
             "name": self.name,
             "type_name": self.type_name,
+            "data_type": self.type_name.split("->")[-1] if "->" in self.type_name else self.type_name,
+            "type": "function" if "function" in self.type_name else ("array" if self.is_array else "variable"),
+            "scope": "global" if self.scope_level == 0 else "local",
             "is_array": self.is_array,
             "size": self.size,
             "line": self.line,
@@ -180,6 +183,8 @@ class SemanticAnalyzer:
             p_sym = Symbol(
                 name=param["name"],
                 type_name=param["type"],
+                is_array=False,
+                size=4,
                 line=node.line,
                 column=node.column
             )
@@ -200,6 +205,7 @@ class SemanticAnalyzer:
             name=node.name,
             type_name=node.type_name,
             is_array=False,
+            size=4,
             line=node.line,
             column=node.column
         )

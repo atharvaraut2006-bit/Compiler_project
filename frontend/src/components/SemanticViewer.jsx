@@ -66,34 +66,63 @@ export const SemanticViewer = ({ symbolTable = {}, diagnostics = [] }) => {
                 </tr>
               </thead>
               <tbody>
-                {symbols.map((sym, idx) => (
-                  <tr key={idx}>
-                    <td className="col-sym-name">
-                      <strong className="symbol-name">{sym.name}</strong>
-                    </td>
-                    <td className="col-sym-type">
-                      <span className="type-badge">{sym.type_name}</span>
-                    </td>
-                    <td className="col-sym-kind">
-                      {sym.is_array ? (
-                        <span className="kind-badge kind-array">Array</span>
-                      ) : (
-                        <span className="kind-badge kind-scalar">Scalar</span>
-                      )}
-                    </td>
-                    <td className="col-sym-size">
-                      {sym.size !== undefined && sym.size !== null ? sym.size : '—'}
-                    </td>
-                    <td className="col-sym-scope">
-                      <span className={`scope-badge scope-${sym.scope_level === 0 ? 'global' : 'local'}`}>
-                        {sym.scope_level === 0 ? 'Global' : 'Local'}
-                      </span>
-                    </td>
-                    <td className="col-sym-loc text-muted">
-                      L{sym.line}:C{sym.column}
-                    </td>
-                  </tr>
-                ))}
+                {symbols.map((sym, idx) => {
+                  const isArray = Boolean(sym.is_array);
+                  const isFunction = sym.type === 'function' || sym.type_name?.includes('function');
+                  const isGlobal = sym.scope_level === 0 || sym.scope?.toLowerCase() === 'global' || sym.name === 'main';
+
+                  // Determine display type
+                  let displayType = 'int';
+                  if (isArray) {
+                    displayType = sym.type_name?.endsWith('[]') ? sym.type_name : `${sym.type_name || sym.data_type || 'int'}[]`;
+                  } else if (isFunction) {
+                    displayType = sym.data_type || sym.return_type || 'int';
+                  } else {
+                    displayType = sym.type_name || sym.data_type || sym.type || 'int';
+                  }
+
+                  // Determine display size
+                  let displaySize = '4 bytes';
+                  if (isArray) {
+                    const elemCount = sym.size || 4;
+                    displaySize = `${elemCount} elements (${elemCount * 4}B)`;
+                  } else if (isFunction) {
+                    displaySize = '—';
+                  } else if (sym.size && sym.size !== 4) {
+                    displaySize = `${sym.size} bytes`;
+                  }
+
+                  return (
+                    <tr key={idx}>
+                      <td className="col-sym-name">
+                        <strong className="symbol-name">{sym.name}</strong>
+                      </td>
+                      <td className="col-sym-type">
+                        <span className="type-badge">{displayType}</span>
+                      </td>
+                      <td className="col-sym-kind">
+                        {isArray ? (
+                          <span className="kind-badge kind-array">Array</span>
+                        ) : isFunction ? (
+                          <span className="kind-badge kind-func">Function</span>
+                        ) : (
+                          <span className="kind-badge kind-scalar">Scalar</span>
+                        )}
+                      </td>
+                      <td className="col-sym-size">
+                        <span className="size-badge font-mono">{displaySize}</span>
+                      </td>
+                      <td className="col-sym-scope">
+                        <span className={`scope-badge scope-${isGlobal ? 'global' : 'local'}`}>
+                          {isGlobal ? 'Global' : 'Local'}
+                        </span>
+                      </td>
+                      <td className="col-sym-loc text-muted font-mono">
+                        L{sym.line || 1}:C{sym.column || 1}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

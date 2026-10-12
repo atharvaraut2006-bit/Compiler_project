@@ -1265,12 +1265,12 @@
   vertical-align: middle;
 }
 
-.symbol-table .col-sym-name { width: 160px; }
-.symbol-table .col-sym-type { width: 140px; }
+.symbol-table .col-sym-name { width: 150px; }
+.symbol-table .col-sym-type { width: 120px; }
 .symbol-table .col-sym-kind { width: 110px; }
-.symbol-table .col-sym-size { width: 80px; text-align: center; }
-.symbol-table .col-sym-scope { width: 130px; }
-.symbol-table .col-sym-loc { width: 100px; text-align: right; }
+.symbol-table .col-sym-size { width: 140px; }
+.symbol-table .col-sym-scope { width: 120px; }
+.symbol-table .col-sym-loc { width: 90px; text-align: right; }
 
 .symbol-name {
   font-family: var(--font-mono);
@@ -1301,6 +1301,18 @@
 .kind-array {
   background-color: #fef3c7;
   color: #92400e;
+}
+
+.kind-func {
+  background-color: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.size-badge {
+  font-size: 0.76rem;
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
 .scope-badge {

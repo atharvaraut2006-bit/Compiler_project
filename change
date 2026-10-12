@@ -607,3 +607,50 @@ HOTFIX: AST HIERARCHY TREE RESTORATION & SIMULATION VERDICT EQUIVALENCE (PASS)
        * DRAM Arrays: Identical (`{ arr: [10, 20, 30, 40] }`).
        * Verdict: `PASS` (Emerald green banner: `✓ VERIFIED: PASS`).
 ================================================================================
+================================================================================
+DATE: 2026-10-12
+HOTFIX: SYMBOL TABLE TYPE, KIND, SIZE, AND SCOPE DISPLAY
+================================================================================
+
+- User Issue:
+  * In the Semantic Analysis Symbol Table, the Type column showed empty pills, the Size column showed `—` for scalar variables, the Kind column classified `main` as a Scalar, and the Scope column classified `main` as Local.
+
+- Root Cause Analysis:
+  1. Symbol Type:
+     - The Symbol table schema historically defined `type_name` rather than `type`, and some serializers omitted `type_name` on scalar entries. `SemanticViewer.jsx` strictly read `sym.type_name`, resulting in an empty `<span className="type-badge"></span>` pill when `sym.type_name` was undefined or null.
+  2. Symbol Size:
+     - `Symbol` in `backend/compiler/semantic.py` set `size=None` by default for scalar variables and parameter variables. Only arrays received a `size` attribute (`node.size`). As a result, scalar variables rendered `—` rather than `4 bytes` (standard 32-bit integer size).
+  3. Symbol Kind:
+     - The table only checked `sym.is_array` to render `Array` vs `Scalar`. Function symbols like `main` did not have `is_array = true`, so they were rendered with the `Scalar` badge.
+  4. Symbol Scope:
+     - In `localCompiler.js`, function declarations were not setting `scope: "global"` and `scope_level: 0` explicitly, or fallback logic defaulted to `Local`.
+
+- Fixes Applied:
+  1. `frontend/src/components/SemanticViewer.jsx`:
+     - Resilient Type Resolution: Resolves type with multi-level fallback:
+       * Array: `sym.type_name?.endsWith('[]') ? sym.type_name : \`${sym.type_name || sym.data_type || 'int'}[]\``
+       * Function: `sym.data_type || sym.return_type || (sym.type_name?.includes('->') ? sym.type_name.split('->')[1] : 'int')`
+       * Scalar: `sym.type_name || sym.data_type || sym.type || 'int'`
+       * Ensures no symbol ever produces a blank type badge.
+     - Accurate Kind Classification:
+       * Functions now receive a distinct green `Function` badge (`.kind-func`).
+       * Arrays receive a warm amber `Array` badge (`.kind-array`).
+       * Scalars receive a crisp blue `Scalar` badge (`.kind-scalar`).
+     - Meaningful Size Display:
+       * Arrays: Display element count and total bytes, e.g., `4 elements (16B)`.
+       * Scalars & Parameters: Display `4 bytes` (standard 32-bit integer width).
+       * Functions: Display `—` (code symbol, no static scalar allocation).
+     - Strict Scope Classification:
+       * Checks `sym.scope_level === 0 || sym.scope?.toLowerCase() === 'global' || sym.name === 'main'`.
+       * Guarantees all symbols display either `Global` or `Local` (satisfying user constraint).
+     - Column Width & Uniform Spacing:
+       * Adjusted column widths in `App.css` (`col-sym-name`: 150px, `col-sym-type`: 120px, `col-sym-kind`: 110px, `col-sym-size`: 140px, `col-sym-scope`: 120px, `col-sym-loc`: 90px) to prevent wrapping and ensure uniform vertical alignment.
+  2. `backend/compiler/semantic.py`:
+     - Updated `Symbol.to_dict()` to include explicit `type`, `data_type`, and `scope` strings (`"global"` vs `"local"`).
+     - Set `size=4` for `VarDecl` scalar variables and function parameters.
+  3. `frontend/src/api/localCompiler.js`:
+     - Populated `type_name`, `data_type`, `scope_level`, and `size: 4` for all variable declarations in client-side compilation fallback.
+  4. Styles in `frontend/src/App.css`:
+     - Added `.kind-func` badge styling (`background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0`).
+     - Added `.size-badge` styling with monospaced font formatting.
+================================================================================
