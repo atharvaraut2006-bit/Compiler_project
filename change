@@ -474,6 +474,16 @@ Repository is ready for review demonstration.
       * Code Editor (top), 5-Stage Pipeline (middle), and Tabbed Inspection Panels (bottom) stack vertically in one single cohesive column.
       * Pipeline cards arranged in a responsive 5-column CSS grid (`repeat(5, minmax(0, 1fr))`) without wide connectors, eliminating horizontal scroll on any window width.
 
+- Symbol Table & IR Table Polish:
+  * Symbol Table Scope Representation:
+    - Updated Scope column to explicitly display "Local" or "Global" instead of raw integer levels ("Scope 0", "Scope 1", etc.).
+    - Level 0 mapped to "Global" (`.scope-global` badge), Levels > 0 mapped to "Local" (`.scope-local` badge).
+  * IR Table Column Cleanup:
+    - Completely removed the redundant "Region" column from the Intermediate Representation (IR) table.
+  * Uniform Column Spacing:
+    - Applied `table-layout: fixed` and dedicated proportional column widths for both Symbol Table and IR Table (`.col-sym-*` and `.col-ir-*`).
+    - Standardized cell padding (`padding: 0.65rem 0.95rem` and `0.6rem 0.85rem`) to ensure uniform, harmonious gaps between every column.
+
 - Automated Test Verification:
   * 58 automated pytest tests passing with 100% pass rate in 0.35s:
     - `test_cost_model.py`: 8 passed

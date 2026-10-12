@@ -113,39 +113,31 @@ export const IRViewer = ({ ir }) => {
           <pre className="code-content-pre">{formattedText}</pre>
         </div>
       ) : (
-        <div className="table-wrapper">
-          <table className="data-table">
+        <div className="table-wrapper ir-table-wrapper">
+          <table className="data-table ir-table">
             <thead>
               <tr>
-                <th style={{ width: '45px' }}>#</th>
-                <th style={{ width: '130px' }}>Opcode</th>
-                <th style={{ width: '90px' }}>Dest</th>
-                <th>Arg 1</th>
-                <th>Arg 2</th>
-                <th style={{ width: '110px' }}>Region</th>
-                <th style={{ width: '60px' }}>Line</th>
+                <th className="col-ir-idx">#</th>
+                <th className="col-ir-op">Opcode</th>
+                <th className="col-ir-dest">Dest</th>
+                <th className="col-ir-arg1">Arg 1</th>
+                <th className="col-ir-arg2">Arg 2</th>
+                <th className="col-ir-line">Line</th>
               </tr>
             </thead>
             <tbody>
               {filteredInstructions.map((instr, idx) => (
                 <tr key={instr.id || idx}>
-                  <td className="text-muted" style={{ fontFamily: 'var(--font-mono)' }}>
-                    {idx + 1}
-                  </td>
-                  <td>
+                  <td className="col-ir-idx text-muted font-mono">{idx + 1}</td>
+                  <td className="col-ir-op">
                     <span className={`ir-opcode-pill ${getOpcodeBadgeClass(instr.opcode)}`}>
                       {instr.opcode}
                     </span>
                   </td>
-                  <td className="ir-operand-dest font-mono">{instr.dest || '—'}</td>
-                  <td className="font-mono">{instr.arg1 || '—'}</td>
-                  <td className="font-mono">{instr.arg2 || '—'}</td>
-                  <td>
-                    <span className="ir-region-tag">
-                      {instr.metadata?.memory_region || instr.metadata?.operation_type || 'register'}
-                    </span>
-                  </td>
-                  <td className="text-muted">{instr.line || '—'}</td>
+                  <td className="col-ir-dest ir-operand-dest font-mono">{instr.dest || '—'}</td>
+                  <td className="col-ir-arg1 font-mono">{instr.arg1 || '—'}</td>
+                  <td className="col-ir-arg2 font-mono">{instr.arg2 || '—'}</td>
+                  <td className="col-ir-line text-muted">{instr.line || '—'}</td>
                 </tr>
               ))}
             </tbody>

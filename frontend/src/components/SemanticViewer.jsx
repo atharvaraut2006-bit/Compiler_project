@@ -53,42 +53,44 @@ export const SemanticViewer = ({ symbolTable = {}, diagnostics = [] }) => {
         {symbols.length === 0 ? (
           <div className="empty-tab-state">No symbols defined in the current program.</div>
         ) : (
-          <div className="table-wrapper">
-            <table className="data-table">
+          <div className="table-wrapper symbol-table-wrapper">
+            <table className="data-table symbol-table">
               <thead>
                 <tr>
-                  <th style={{ width: '180px' }}>Symbol Name</th>
-                  <th style={{ width: '100px' }}>Type</th>
-                  <th style={{ width: '110px' }}>Kind</th>
-                  <th style={{ width: '85px', textAlign: 'center' }}>Size</th>
-                  <th style={{ width: '130px' }}>Scope Level</th>
-                  <th style={{ minWidth: '100px' }}>Location</th>
+                  <th className="col-sym-name">Symbol Name</th>
+                  <th className="col-sym-type">Type</th>
+                  <th className="col-sym-kind">Kind</th>
+                  <th className="col-sym-size">Size</th>
+                  <th className="col-sym-scope">Scope</th>
+                  <th className="col-sym-loc">Location</th>
                 </tr>
               </thead>
               <tbody>
                 {symbols.map((sym, idx) => (
                   <tr key={idx}>
-                    <td>
+                    <td className="col-sym-name">
                       <strong className="symbol-name">{sym.name}</strong>
                     </td>
-                    <td>
+                    <td className="col-sym-type">
                       <span className="type-badge">{sym.type_name}</span>
                     </td>
-                    <td>
+                    <td className="col-sym-kind">
                       {sym.is_array ? (
                         <span className="kind-badge kind-array">Array</span>
                       ) : (
                         <span className="kind-badge kind-scalar">Scalar</span>
                       )}
                     </td>
-                    <td>{sym.size !== undefined && sym.size !== null ? sym.size : '—'}</td>
-                    <td>
-                      <span className="scope-tag">Scope {sym.scope_level ?? 0}</span>
+                    <td className="col-sym-size">
+                      {sym.size !== undefined && sym.size !== null ? sym.size : '—'}
                     </td>
-                    <td>
-                      <span className="text-muted">
-                        L{sym.line}:C{sym.column}
+                    <td className="col-sym-scope">
+                      <span className={`scope-badge scope-${sym.scope_level === 0 ? 'global' : 'local'}`}>
+                        {sym.scope_level === 0 ? 'Global' : 'Local'}
                       </span>
+                    </td>
+                    <td className="col-sym-loc text-muted">
+                      L{sym.line}:C{sym.column}
                     </td>
                   </tr>
                 ))}
