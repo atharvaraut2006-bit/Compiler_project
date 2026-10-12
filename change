@@ -459,6 +459,18 @@ Repository is ready for review demonstration.
     - Updated `generate_pdf.py` and regenerated `Compiler_for_PIM_Cost_Model_Specification.pdf` and `docs/Compiler_for_PIM_Cost_Model_Specification.pdf`.
     - Includes master 4-term equations, parameter definitions, reviewer Q&A derivations, and step-by-step case studies.
 
+- UI Vertical Scrolling & Zero-Horizontal-Scroll Polish:
+  * Resolved excessive width and horizontal scrolling:
+    - Root cause: The 2-column side-by-side grid forced the code editor (~50%) and the 5-stage pipeline + 5 inspection tabs (~50%) into cramped widths, exceeding laptop viewports and creating an awkward horizontal scrollbar.
+    - Switched default layout to Vertical Scrolling Flow (`.layout-vertical`):
+      * Max-width: 1200px centered with `margin: 0 auto; box-sizing: border-box;`.
+      * Absolute elimination of horizontal scroll: `overflow-x: hidden` enforced on `html, body, #root, .app-container`, and `.stage-pipeline-wrapper`.
+      * Top section: Code Editor with comfortable `320px` height displaying the complete program cleanly without vertical/horizontal clutter.
+      * Middle section: 5-Stage Compilation Pipeline spanning full width. All 5 cards (`Lexical`, `Syntax`, `Semantic`, `IR Generation`, `PIM Mapping`) fit side-by-side in one line without clipping or horizontal scroll; wraps cleanly into a responsive grid below 860px.
+      * Diagnostics callout banner displayed cleanly between pipeline and results when issues occur.
+      * Bottom section: Results & Inspection Panel spanning full width. Segmented tabs wrap gracefully (`flex-wrap: wrap`), giving the Strategy Comparison Matrix, AST Tree Diagram, and Tables ample room to display without cramped columns.
+    - Added Header Layout Switcher button (`[ Vertical View ]` / `[ Split View ]`) allowing users on ultrawide monitors to toggle between vertical and split views, with Vertical View active by default.
+
 - Automated Test Verification:
   * 58 automated pytest tests passing with 100% pass rate in 0.35s:
     - `test_cost_model.py`: 8 passed

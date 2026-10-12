@@ -7,6 +7,8 @@
   display: flex;
   flex-direction: column;
   background-color: var(--bg-secondary);
+  max-width: 100vw;
+  overflow-x: hidden;
 }
 
 /* Header */
@@ -63,6 +65,10 @@
 /* Specification Drawer */
 .spec-drawer {
   padding: 1rem 1.75rem 0 1.75rem;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
   animation: slideDown 0.2s ease-out;
 }
 
@@ -126,17 +132,53 @@
   border: 1px solid var(--border);
 }
 
-/* Workspace Main Grid */
+/* Workspace Main Layout */
 .workspace-main {
   flex: 1;
-  display: grid;
-  grid-template-columns: 1.05fr 1.15fr;
-  gap: 1.25rem;
-  padding: 1.25rem 1.75rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-@media (max-width: 1080px) {
-  .workspace-main {
+/* Vertical Layout (Default & Preferred: Smooth vertical scrolling, zero horizontal overflow) */
+.workspace-main.layout-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 1.35rem;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 1.25rem 1.5rem 3.5rem 1.5rem;
+}
+
+.workspace-main.layout-vertical .editor-column {
+  width: 100%;
+}
+
+.workspace-main.layout-vertical .editor-card {
+  height: auto;
+  overflow: visible;
+}
+
+.workspace-main.layout-vertical .output-column {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.35rem;
+}
+
+/* Split Side-by-Side Layout (Optional view for ultrawide displays) */
+.workspace-main.layout-split {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr;
+  gap: 1.25rem;
+  padding: 1.25rem 1.75rem;
+  max-width: 1600px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+@media (max-width: 1100px) {
+  .workspace-main.layout-split {
     grid-template-columns: 1fr;
   }
 }
@@ -399,23 +441,34 @@
 }
 
 .stage-pipeline-wrapper {
-  overflow-x: auto;
+  overflow-x: hidden;
+  width: 100%;
 }
 
 .stage-pipeline-container {
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
+  align-items: stretch;
+  gap: 0.5rem;
+  width: 100%;
 }
 
 .pipeline-step-card {
-  flex: 1;
+  flex: 1 1 0;
   background-color: #f8fafc;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 0.75rem 0.85rem;
-  min-width: 140px;
+  padding: 0.65rem 0.8rem;
+  min-width: 110px;
+  box-sizing: border-box;
   transition: all 0.2s ease;
+}
+
+@media (max-width: 860px) {
+  .stage-pipeline-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.5rem;
+  }
 }
 
 .pipeline-step-card:hover {
@@ -481,6 +534,13 @@
   color: #cbd5e1;
   display: flex;
   align-items: center;
+  flex-shrink: 0;
+}
+
+@media (max-width: 860px) {
+  .pipeline-connector {
+    display: none;
+  }
 }
 
 .pipeline-connector.active {
@@ -574,6 +634,8 @@
 
 .segmented-tab-bar {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 0.4rem;
   padding: 0.5rem 0.75rem;
   background-color: #f8fafc;
