@@ -226,6 +226,39 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
   // Active dataset: either custom sensitivity result or default baseline
   const activeData = useMemo(() => {
     if (sensitivityResult && sensitivityResult.valid) {
+      const baseTransfer = performance?.transfer_metrics || {};
+      const activeBandwidth = sensitivityResult.hypothetical_parameters?.bus_bandwidth_bytes_per_cycle
+        ?? assumptionInputs.bus_bandwidth_bytes_per_cycle
+        ?? baseTransfer.bus_bandwidth_bytes_per_cycle
+        ?? 2.0;
+
+      const hypoStrategy = sensitivityResult.hypothetical_strategy;
+      const isPim = hypoStrategy === 'DIRECT_PIM' || hypoStrategy === 'TRANSFORMED_PIM';
+      const cpuBytes = baseTransfer.cpu_bytes_transferred ?? 32;
+      const pimDispatch = baseTransfer.pim_kernel_dispatch_bytes || 8;
+      const selBytes = isPim ? pimDispatch : cpuBytes;
+      const bytesSaved = isPim ? Math.max(0, cpuBytes - pimDispatch) : 0;
+      const pctReduction = (cpuBytes > 0 && bytesSaved > 0)
+        ? Math.round((bytesSaved / cpuBytes) * 1000) / 10
+        : 0.0;
+      const cpuTransferCost = cpuBytes / (activeBandwidth > 0 ? activeBandwidth : 2.0);
+      const selTransferCost = selBytes / (activeBandwidth > 0 ? activeBandwidth : 2.0);
+      const savingsCycles = Math.max(0, cpuTransferCost - selTransferCost);
+
+      const customTransfer = sensitivityResult.transfer_metrics || {
+        ...baseTransfer,
+        declared_footprint_bytes: baseTransfer.declared_footprint_bytes ?? 24,
+        dynamic_bus_bytes_accessed: cpuBytes,
+        cpu_bytes_transferred: cpuBytes,
+        selected_bytes_transferred: selBytes,
+        bytes_saved: bytesSaved,
+        bandwidth_reduction_pct: pctReduction,
+        cpu_transfer_cost_cycles: cpuTransferCost,
+        selected_transfer_cost_cycles: selTransferCost,
+        transfer_cost_savings_cycles: savingsCycles,
+        bus_bandwidth_bytes_per_cycle: activeBandwidth
+      };
+
       return {
         selected_strategy: sensitivityResult.hypothetical_strategy,
         selected_cost: sensitivityResult.hypothetical_cost,
@@ -237,7 +270,9 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
         impact_summary: sensitivityResult.impact_summary,
         strategy_changed: sensitivityResult.strategy_changed,
         baseline_strategy: sensitivityResult.baseline_strategy,
-        comparison_table: sensitivityResult.comparison_table || []
+        comparison_table: sensitivityResult.comparison_table || [],
+        transfer_metrics: customTransfer,
+        offload_beneficial: sensitivityResult.offload_beneficial ?? (hypoStrategy !== 'CPU_ONLY')
       };
     }
 
@@ -304,9 +339,11 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
       impact_summary: null,
       strategy_changed: false,
       baseline_strategy: performance?.selected_strategy || mapping?.optimization?.selected_strategy || 'CPU_ONLY',
-      comparison_table: []
+      comparison_table: [],
+      transfer_metrics: performance?.transfer_metrics || null,
+      offload_beneficial: performance?.offload_beneficial ?? false
     };
-  }, [performance, mapping, sensitivityResult]);
+  }, [performance, mapping, sensitivityResult, assumptionInputs]);
 
   // Handle input changes with validation
   const handleInputChange = (field, val) => {
@@ -341,7 +378,11 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
     try {
       const res = await evaluatePerformance(sourceCode, assumptionInputs);
       if (res && res.sensitivity) {
-        setSensitivityResult(res.sensitivity);
+        setSensitivityResult({
+          ...res.sensitivity,
+          transfer_metrics: res.sensitivity.transfer_metrics || res.transfer_metrics,
+          offload_beneficial: res.sensitivity.offload_beneficial ?? (res.sensitivity.hypothetical_strategy !== 'CPU_ONLY')
+        });
       } else if (res && res.strategies) {
         setSensitivityResult({
           valid: true,
@@ -354,6 +395,8 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
           hypothetical_speedup: res.speedup_estimate,
           strategies: res.strategies,
           cost_breakdown: res.cost_breakdown,
+          transfer_metrics: res.transfer_metrics,
+          offload_beneficial: res.offload_beneficial ?? (res.selected_strategy !== 'CPU_ONLY'),
           comparison_table: res.comparison_table || []
         });
       }
@@ -387,7 +430,7 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
     10.0
   );
 
-  const transfer = performance?.transfer_metrics || {};
+  const transfer = activeData.transfer_metrics || performance?.transfer_metrics || {};
   const execStats = performance?.execution_stats || {};
   const dynamicStats = execStats.dynamic || {};
   const staticStats = execStats.static || {};
@@ -880,7 +923,9 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
           <div className="stats-subpanel">
             <div className="subpanel-header">
               <span className="subpanel-title">Host Bus Transfer & Savings</span>
-              <span className="status-badge badge-feasible">Analytical Model</span>
+              <span className={`status-badge ${activeData.is_hypothetical ? 'badge-hypothetical' : 'badge-feasible'}`}>
+                {activeData.is_hypothetical ? 'Custom Assumptions' : 'Analytical Model'}
+              </span>
             </div>
 
             <div className="stats-list">
@@ -905,12 +950,16 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
               <div className="stats-row">
                 <span className="stat-row-label">Transfer Latency Saved:</span>
                 <span className="stat-row-value text-success font-bold">
-                  {transfer.transfer_cost_savings_cycles ?? 0} cycles
+                  {typeof transfer.transfer_cost_savings_cycles === 'number'
+                    ? `${transfer.transfer_cost_savings_cycles.toFixed(1)} cycles`
+                    : '0 cycles'}
                 </span>
               </div>
               <div className="stats-row">
                 <span className="stat-row-label">Memory Bus Bandwidth:</span>
-                <span className="stat-row-value">{transfer.bus_bandwidth_bytes_per_cycle ?? 2.0} B/cycle</span>
+                <span className={`stat-row-value ${activeData.is_hypothetical ? 'font-bold text-accent' : ''}`}>
+                  {transfer.bus_bandwidth_bytes_per_cycle ?? 2.0} B/cycle
+                </span>
               </div>
             </div>
           </div>
@@ -945,8 +994,10 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
               </div>
               <div className="stats-row">
                 <span className="stat-row-label">Offload Profitability:</span>
-                <span className="stat-row-value font-bold text-accent">
-                  {performance?.offload_beneficial ? 'Beneficial (Net Speedup)' : 'Not Beneficial (CPU Faster)'}
+                <span className={`stat-row-value font-bold ${activeData.offload_beneficial ? 'text-success' : 'text-accent'}`}>
+                  {activeData.offload_beneficial
+                    ? `Beneficial (${activeData.speedup_estimate > 1.0 ? `${activeData.speedup_estimate.toFixed(2)}x Speedup` : 'PIM Faster'})`
+                    : 'Not Beneficial (CPU Faster)'}
                 </span>
               </div>
             </div>

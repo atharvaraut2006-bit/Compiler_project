@@ -489,6 +489,8 @@ class PerformanceEvaluator:
             "hypothetical_speedup": hypo_eval.get("speedup_estimate"),
             "hypothetical_parameters": hypo_params.to_dict(),
             "strategies": hypo_strategies,
+            "transfer_metrics": hypo_transfer,
+            "offload_beneficial": hypo_eval.get("offload_beneficial", hypo_strategy != "CPU_ONLY"),
             "cost_breakdown": self._format_cost_breakdown(hypo_strategies),
             "comparison_table": comparison_table
         }
