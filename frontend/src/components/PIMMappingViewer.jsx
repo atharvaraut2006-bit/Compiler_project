@@ -189,7 +189,7 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
       cpu_cycles_per_arithmetic_op: params.cpu_cycles_per_arithmetic_op ?? 1.0,
       pim_cycles_per_arithmetic_op: params.pim_cycles_per_arithmetic_op ?? 1.2,
       bus_bandwidth_bytes_per_cycle: params.bus_bandwidth_bytes_per_cycle ?? 2.0,
-      layout_transform_cycles_per_byte: params.layout_transform_cycles_per_byte ?? 0.5
+      layout_transform_cycles_per_byte: params.layout_transform_cycles_per_byte ?? 0.25
     };
   }, [performance, mapping]);
 
@@ -249,11 +249,11 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
         strategy: 'CPU_ONLY',
         is_valid: true,
         is_selected: mapping?.optimization?.selected_strategy === 'CPU_ONLY',
-        compute_cost: mapping?.optimization?.candidates?.CPU_ONLY?.compute_cost ?? 8.0,
-        transfer_cost: mapping?.optimization?.candidates?.CPU_ONLY?.transfer_cost ?? 8.0,
+        compute_cost: mapping?.optimization?.candidates?.CPU_ONLY?.compute_cost ?? 12.0,
+        transfer_cost: mapping?.optimization?.candidates?.CPU_ONLY?.transfer_cost ?? 16.0,
         layout_cost: 0.0,
         synchronization_cost: 0.0,
-        total_cost: mapping?.optimization?.candidates?.CPU_ONLY?.total_cost ?? 16.0,
+        total_cost: mapping?.optimization?.candidates?.CPU_ONLY?.total_cost ?? 28.0,
         speedup_vs_cpu: 1.0,
         rejection_reason: null
       },
@@ -261,12 +261,12 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
         strategy: 'DIRECT_PIM',
         is_valid: mapping?.optimization?.candidates?.DIRECT_PIM?.is_valid ?? true,
         is_selected: mapping?.optimization?.selected_strategy === 'DIRECT_PIM',
-        compute_cost: mapping?.optimization?.candidates?.DIRECT_PIM?.compute_cost ?? 9.6,
+        compute_cost: mapping?.optimization?.candidates?.DIRECT_PIM?.compute_cost ?? 14.4,
         transfer_cost: mapping?.optimization?.candidates?.DIRECT_PIM?.transfer_cost ?? 4.0,
         layout_cost: 0.0,
         synchronization_cost: mapping?.optimization?.candidates?.DIRECT_PIM?.synchronization_cost ?? 60.0,
-        total_cost: mapping?.optimization?.candidates?.DIRECT_PIM?.total_cost ?? 73.6,
-        speedup_vs_cpu: mapping?.optimization?.candidates?.DIRECT_PIM?.speedup ?? 1.25,
+        total_cost: mapping?.optimization?.candidates?.DIRECT_PIM?.total_cost ?? 78.4,
+        speedup_vs_cpu: mapping?.optimization?.candidates?.DIRECT_PIM?.speedup ?? 1.0,
         rejection_reason: mapping?.optimization?.candidates?.DIRECT_PIM?.rejection_reason
       },
       {

@@ -62,6 +62,124 @@
   gap: 0.75rem;
 }
 
+/* Backend Status Pill */
+.backend-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.backend-pill.backend-online {
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.backend-pill.backend-offline {
+  background-color: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.backend-pill.backend-checking {
+  background-color: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.backend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.backend-online .backend-dot {
+  background-color: #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+}
+
+.backend-offline .backend-dot {
+  background-color: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+}
+
+.backend-checking .backend-dot {
+  background-color: #f59e0b;
+  animation: pulse 1.2s infinite;
+}
+
+.backend-retry-btn {
+  margin-left: 0.25rem;
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  text-decoration: underline;
+}
+
+.backend-retry-btn:hover {
+  opacity: 0.8;
+}
+
+/* Offline Alert Banner */
+.backend-alert-banner {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  border-bottom: 1px solid #f87171;
+  color: #991b1b;
+  padding: 0.75rem 1.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.85rem;
+  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.08);
+}
+
+.backend-alert-content {
+  flex: 1;
+}
+
+.backend-alert-hint {
+  font-size: 0.78rem;
+  margin-top: 0.2rem;
+  color: #7f1d1d;
+}
+
+.backend-alert-hint code {
+  background-color: rgba(255, 255, 255, 0.7);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.82rem;
+}
+
+.btn-retry-banner {
+  background-color: #dc2626;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-retry-banner:hover {
+  background-color: #b91c1c;
+}
+
 /* Specification Drawer */
 .spec-drawer {
   padding: 1rem 1.75rem 0 1.75rem;

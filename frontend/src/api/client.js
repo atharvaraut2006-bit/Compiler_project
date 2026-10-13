@@ -1,7 +1,6 @@
 import axios from 'axios';
-import { runLocalCompilation } from './localCompiler';
 
-const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:8000/api');
+export const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:8000/api');
 
 const FALLBACK_EXAMPLES = [
   {
@@ -156,16 +155,25 @@ total = x + y;`
 
 export const checkHealth = async () => {
   try {
-    const response = await axios.get(`${API_BASE}/health`, { timeout: 3500 });
-    return response.data;
+    const response = await axios.get(`${API_BASE}/health`, { timeout: 4000 });
+    return {
+      online: true,
+      service: response.data?.service || "FastAPI Compiler Service",
+      version: response.data?.version || "1.0.0",
+      apiUrl: API_BASE
+    };
   } catch (err) {
-    return { status: "local", service: "In-Browser Compiler Engine", version: "1.0.0" };
+    return {
+      online: false,
+      errorHint: err.code === 'ECONNABORTED' ? 'Timeout' : (err.message || 'Offline'),
+      apiUrl: API_BASE
+    };
   }
 };
 
 export const getExamples = async () => {
   try {
-    const response = await axios.get(`${API_BASE}/examples`, { timeout: 3500 });
+    const response = await axios.get(`${API_BASE}/examples`, { timeout: 4000 });
     return response.data;
   } catch (err) {
     return FALLBACK_EXAMPLES;
@@ -177,20 +185,54 @@ export const compileCode = async (sourceCode) => {
     const response = await axios.post(
       `${API_BASE}/compile`,
       { source_code: sourceCode },
-      { timeout: 7000 }
+      { timeout: 10000 }
     );
     return response.data;
   } catch (err) {
-    // If the server explicitly responded with an HTTP status (e.g. 400 or 500), check response
+    // If the server explicitly responded with a structured compiler response (e.g. 400 with compilation error payload)
     if (err.response && err.response.data && err.response.data.stages) {
       return err.response.data;
     }
 
-    // Network error, mixed-content block, serverless cold-start timeout, or connection refused
-    // Seamlessly fall back to the in-browser compilation & simulation engine!
-    console.warn("Backend unavailable or network error encountered. Falling back to in-browser compiler engine:", err.message);
-    const localResult = runLocalCompilation(sourceCode);
-    return localResult;
+    // Network error, backend server offline, serverless timeout, or connection refused
+    // Explicitly report backend connection failure instead of masking with hardcoded local fallback
+    const errorMsg = `Cannot connect to Python compiler backend at '${API_BASE}'. ` +
+      `Ensure the backend server is running ('python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000') ` +
+      `or configure VITE_API_URL. Details: ${err.message}`;
+
+    return {
+      success: false,
+      error: errorMsg,
+      is_backend_error: true,
+      stages: {
+        lexical: { status: "error", message: "Backend unreachable" },
+        syntax: { status: "skipped", message: "Backend unreachable" },
+        semantic: { status: "skipped", message: "Backend unreachable" },
+        ir: { status: "skipped", message: "Backend unreachable" },
+        pim_mapping: { status: "skipped", message: "Backend unreachable" }
+      },
+      tokens: [],
+      ast: null,
+      symbol_table: {},
+      diagnostics: [
+        {
+          severity: "error",
+          message: errorMsg,
+          line: 1,
+          column: 1
+        }
+      ],
+      ir: { instructions: [], formatted: "", instruction_count: 0 },
+      mapping: {
+        instructions: [],
+        pim_count: 0,
+        cpu_count: 0,
+        unsupported_count: 0,
+        total_instructions: 0,
+        summary: { total: 0, pim_allocated: 0, cpu_fallback: 0 }
+      },
+      performance: null
+    };
   }
 };
 
@@ -199,15 +241,14 @@ export const evaluatePerformance = async (sourceCode, customParams = null) => {
     const response = await axios.post(
       `${API_BASE}/evaluate`,
       { source_code: sourceCode, custom_params: customParams },
-      { timeout: 7000 }
+      { timeout: 10000 }
     );
     return response.data;
   } catch (err) {
     if (err.response && err.response.data && err.response.data.performance) {
       return err.response.data.performance;
     }
-    const localResult = runLocalCompilation(sourceCode, customParams);
-    return localResult.performance;
+    throw new Error(`Performance evaluation failed at backend '${API_BASE}': ${err.message}`);
   }
 };
 

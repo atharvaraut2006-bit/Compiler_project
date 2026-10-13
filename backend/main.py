@@ -213,6 +213,7 @@ total = x + y;"""
 # --- Endpoints ---
 
 @app.get("/api/health")
+@app.get("/health")
 def health_check():
     """Health check endpoint."""
     return {
@@ -223,6 +224,7 @@ def health_check():
 
 
 @app.get("/api/examples")
+@app.get("/examples")
 def get_examples():
     """Returns catalog of example C programs."""
     return EXAMPLES
@@ -232,6 +234,7 @@ from fastapi.responses import FileResponse
 
 
 @app.get("/api/cost-model-pdf")
+@app.get("/cost-model-pdf")
 def download_cost_model_pdf():
     """Serves the publication-quality cost model specification PDF."""
     pdf_path = _current_dir.parent / "Compiler_for_PIM_Cost_Model_Specification.pdf"
@@ -247,6 +250,7 @@ def download_cost_model_pdf():
 
 
 @app.post("/api/compile")
+@app.post("/compile")
 def compile_code(req: CompileRequest):
     """
     Runs compilation pipeline:
@@ -257,6 +261,7 @@ def compile_code(req: CompileRequest):
 
 
 @app.post("/api/evaluate")
+@app.post("/evaluate")
 def evaluate_performance(req: EvaluateRequest):
     """
     Phase 4: Evaluates execution strategies (CPU_ONLY, DIRECT_PIM, TRANSFORMED_PIM),

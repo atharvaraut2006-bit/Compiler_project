@@ -234,10 +234,15 @@ class WorkloadAnalyzer:
                 def check_stride(node):
                     if node is None:
                         return False
-                    if isinstance(node, ArrayAccess) and isinstance(node.index, BinaryOp) and node.index.op in ("*", "/"):
-                        return True
+                    node_type = node.get("node_type") if isinstance(node, dict) else type(node).__name__
+                    if node_type == "ArrayAccess":
+                        idx = node.get("index") if isinstance(node, dict) else getattr(node, "index", None)
+                        idx_type = idx.get("node_type") if isinstance(idx, dict) else type(idx).__name__
+                        idx_op = idx.get("op") if isinstance(idx, dict) else getattr(idx, "op", None)
+                        if idx_type == "BinaryOp" and idx_op in ("*", "/"):
+                            return True
                     for field in ("declarations", "statements", "body", "then_branch", "else_branch", "expression", "target", "value", "init", "condition", "update", "left", "right"):
-                        val = getattr(node, field, None)
+                        val = node.get(field) if isinstance(node, dict) else getattr(node, field, None)
                         if isinstance(val, list):
                             for item in val:
                                 if check_stride(item):
@@ -302,12 +307,15 @@ class WorkloadAnalyzer:
                 nonlocal total
                 if n is None:
                     return
-                if isinstance(n, VarDecl):
+                node_type = n.get("node_type") if isinstance(n, dict) else type(n).__name__
+                if node_type == "VarDecl":
                     total += 4
-                elif isinstance(n, ArrayDecl):
-                    total += n.size * 4
+                elif node_type == "ArrayDecl":
+                    size = n.get("size", 0) if isinstance(n, dict) else getattr(n, "size", 0)
+                    total += (size or 0) * 4
+
                 for field in ("declarations", "statements", "body", "then_branch", "else_branch", "init"):
-                    val = getattr(n, field, None)
+                    val = n.get(field) if isinstance(n, dict) else getattr(n, field, None)
                     if isinstance(val, list):
                         for item in val:
                             visit(item)
@@ -322,41 +330,64 @@ class WorkloadAnalyzer:
         """
         Attempts to statically calculate loop bounds from for-loops in AST.
         Returns integer count if constant bounds are found, otherwise returns None.
+        Supports both ASTNode object trees and serialized dict representations.
         """
         try:
             from .ast_nodes import Program, FunctionDef, Block, ForLoop, BinaryOp, IntLiteral, VarDecl, Assignment
 
             def search_loops(node):
-                if isinstance(node, Program):
-                    for d in node.declarations:
+                if node is None:
+                    return None
+
+                node_type = node.get("node_type") if isinstance(node, dict) else type(node).__name__
+
+                if node_type == "Program":
+                    decls = (node.get("declarations") or node.get("body", [])) if isinstance(node, dict) else getattr(node, "declarations", [])
+                    for d in decls:
                         res = search_loops(d)
                         if res is not None:
                             return res
-                elif isinstance(node, FunctionDef):
-                    return search_loops(node.body)
-                elif isinstance(node, Block):
-                    for stmt in node.statements:
+                elif node_type == "FunctionDef":
+                    body = node.get("body") if isinstance(node, dict) else getattr(node, "body", None)
+                    return search_loops(body)
+                elif node_type == "Block":
+                    stmts = node.get("statements", []) if isinstance(node, dict) else getattr(node, "statements", [])
+                    for stmt in stmts:
                         res = search_loops(stmt)
                         if res is not None:
                             return res
-                elif isinstance(node, ForLoop):
+                elif node_type == "ForLoop":
+                    init = node.get("init") if isinstance(node, dict) else getattr(node, "init", None)
+                    cond = node.get("condition") if isinstance(node, dict) else getattr(node, "condition", None)
+
                     start_val = 0
-                    if isinstance(node.init, VarDecl) and isinstance(node.init.initializer, IntLiteral):
-                        start_val = node.init.initializer.value
-                    elif isinstance(node.init, Assignment) and isinstance(node.init.value, IntLiteral):
-                        start_val = node.init.value.value
+                    if isinstance(init, dict):
+                        init_val = init.get("initializer") or init.get("value")
+                        if isinstance(init_val, dict) and "value" in init_val:
+                            start_val = init_val["value"]
+                        elif isinstance(init_val, int):
+                            start_val = init_val
+                    elif isinstance(init, VarDecl) and isinstance(init.initializer, IntLiteral):
+                        start_val = init.initializer.value
+                    elif isinstance(init, Assignment) and isinstance(init.value, IntLiteral):
+                        start_val = init.value.value
 
-                    if isinstance(node.condition, BinaryOp):
-                        op = node.condition.op
-                        bound = None
-                        if isinstance(node.condition.right, IntLiteral):
-                            bound = node.condition.right.value
+                    op = cond.get("op") if isinstance(cond, dict) else getattr(cond, "op", None)
+                    right = cond.get("right") if isinstance(cond, dict) else getattr(cond, "right", None)
 
-                        if bound is not None:
-                            if op == "<":
-                                return max(0, bound - start_val)
-                            elif op == "<=":
-                                return max(0, bound - start_val + 1)
+                    bound = None
+                    if isinstance(right, dict) and "value" in right:
+                        bound = right["value"]
+                    elif isinstance(right, IntLiteral):
+                        bound = right.value
+                    elif isinstance(right, int):
+                        bound = right
+
+                    if bound is not None and op:
+                        if op == "<":
+                            return max(0, bound - start_val)
+                        elif op == "<=":
+                            return max(0, bound - start_val + 1)
                 return None
 
             return search_loops(ast)
