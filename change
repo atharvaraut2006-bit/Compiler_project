@@ -1,57 +1,52 @@
 ================================================================================
 PERSISTENT PROJECT HANDOVER DOCUMENT: change
-Project: Compiler for Processing in Memory (PIM): Design and Simulation
-Current Phase: Phase 1 (C Compiler Front End)
-Date: 2026-10-11
+Project: Compiler for Processing in Memory (PIM)
+Current Phase: Final Phase (Testing, Evaluation, Bug Fixes, and Documentation)
+Date: 2026-10-13
 ================================================================================
 
 1. PROJECT TITLE AND OVERALL OBJECTIVE
 --------------------------------------------------------------------------------
-Title: Compiler for Processing in Memory (PIM): Design and Simulation
-Objective: To build an educational compiler and simulation platform that accepts
-C source programs, transforms them into an intermediate representation, identifies
-operations eligible for in-memory acceleration (Processing in Memory), offloads them
-to simulated PIM hardware instructions, and compares simulated CPU execution against
-PIM execution to demonstrate data-movement reduction and execution speedups.
+Title: Compiler for Processing in Memory (PIM)
+Objective: To build an educational, production-ready research compiler platform that
+accepts C source programs, performs lexical, syntax, and semantic analysis, generates
+three-address code (3AC) intermediate representation, performs research-informed
+PIM instruction mapping and CPU fallback, and computes analytical 4-term performance
+cost evaluations (Compute, Bus Transfer, Layout Reorganization, and Synchronization
+Overhead) across CPU_ONLY, DIRECT_PIM, and TRANSFORMED_PIM execution strategies.
 
 
-2. THE SIX-PHASE ROADMAP
+2. THE REVISED FOUR-PHASE ARCHITECTURE
 --------------------------------------------------------------------------------
-Phase 1 — C Compiler Front End:
-  Lexical analysis, recursive descent parsing, AST generation, semantic analysis,
-  scoped symbol table, error diagnostics, and a dedicated developer interface.
-  [STATUS: FULLY IMPLEMENTED & TESTED]
+Phase 1 — Compiler Frontend:
+  Lexical analysis with 5-way token classification, recursive descent AST parsing
+  with operator precedence climbing, scoped semantic symbol table, and error diagnostics.
+  [STATUS: FULLY IMPLEMENTED, INTEGRATED & 100% TESTED]
 
-Phase 2 — Intermediate Representation (IR) & PIM Mapping:
-  Three-address code (3AC) generation, temporary variable numbering, array indexing
-  operations, control flow branching, PIM eligibility analysis, simulated PIM
-  instruction mapping (PIM_ADD, PIM_SUB, PIM_MUL, PIM_LOAD, PIM_STORE, PIM_COMPARE),
-  CPU fallback routing, educational mapping rationales, and React UI inspection views.
-  [STATUS: FULLY IMPLEMENTED & TESTED]
+Phase 2 + Phase 4 — IR Generation, PIM Mapping & Performance Analysis:
+  Three-address-code (3AC) generation, centralized PIM hardware instruction mapping,
+  transparent CPU fallback for unsupported operations (division, control flow, functions),
+  4-term analytical cost model, candidate strategy comparison, dynamic speedup derivation,
+  and interactive sensitivity analysis sandbox.
+  [STATUS: FULLY IMPLEMENTED, INTEGRATED & 100% TESTED]
 
-Phase 3 — CPU & PIM Simulators:
-  Dual-execution cycle and memory simulators, execution trace generation, and
-  semantic equivalence verification.
-  [STATUS: PENDING - Next Phase]
+Original Phase 3 — CPU/PIM Execution Simulation:
+  Cycle-by-cycle execution simulator and animation trace.
+  [STATUS: ARCHITECTURALLY DECOUPLED & REMOVED BY DESIGN]
+  Rationale: Cycle simulation diverged from compiler analytical evaluation. The compiler
+  now strictly uses a rigorous Near-Memory Computing analytical model (NMC-Opt inspired).
 
-Phase 4 — Performance Analysis:
-  Memory bus traffic in bytes, cycle latency models, speedup formulas, and operation
-  distribution calculations.
-  [STATUS: PENDING]
-
-Phase 5 — React Dashboard & FastAPI Integration:
-  Full multi-view interactive dashboard with charts (Recharts) and compiler explorer.
-  [STATUS: PENDING]
-
-Phase 6 — Testing, Evaluation & Documentation:
-  Comprehensive workload suite, scaling benchmarks, academic documentation, and
-  manuscript preparation.
-  [STATUS: PENDING]
+Final Phase — Testing, Evaluation, Bug Fixes, and Documentation:
+  Full compiler audit, complete elimination of frontend mock fallback, serverless
+  Python deployment for Vercel, cost-model formula reconciliation, IR viewer table
+  synchronization (full 38 instruction display), 78 automated unit/integration tests,
+  and academic review documentation.
+  [STATUS: FULLY IMPLEMENTED, VERIFIED & DOCUMENTED]
 
 
-3. CURRENT PHASE BEING IMPLEMENTED
+3. CURRENT STATUS
 --------------------------------------------------------------------------------
-Phase 2: Intermediate Representation (IR) Generation and PIM Instruction Mapping.
+All phases complete. Verified on local Python 3.12 / Vite and deployed on Vercel.
 
 
 4. PHASE 1 FEATURES ACTUALLY COMPLETED
@@ -1321,4 +1316,121 @@ UI ENHANCEMENT & BUG FIX: IR TABLE FULL-WIDTH EXPANSION & FILTER CRASH PREVENTIO
 4. VERIFICATION:
    - Frontend production build (`npm run build`) succeeded in 220ms with 0 errors.
    - Pushed directly to GitHub (`main`) for automatic live deployment on Vercel.
+================================================================================
+
+================================================================================
+DATE: 2026-10-13
+FINAL PHASE: COMPILER AUDIT, HARDCODED FALLBACK REMOVAL, VERCEL SERVERLESS
+PYTHON BACKEND, COST MODEL RECONCILIATION, IR VIEWER UNIFIED SYNCHRONIZATION,
+AND ACADEMIC EVALUATION
+================================================================================
+
+1. COMPILER AUDIT & HARDCODED MOCK ELIMINATION
+--------------------------------------------------------------------------------
+- Audited entire compiler frontend and backend pipeline against 8 criteria.
+- Discovered and removed `frontend/src/api/localCompiler.js` silent fallback which
+  previously generated client-side mocked AST/IR when backend was offline.
+- Replaced `localCompiler.js` with an explicit deprecation stub and updated
+  `frontend/src/api/client.js` to strictly communicate with `/api/compile` and
+  `/api/evaluate`. Unreachable backends now raise authentic network errors instead
+  of faking compilation.
+
+2. VERCEL SERVERLESS PYTHON BACKEND DEPLOYMENT
+--------------------------------------------------------------------------------
+- Packaged a self-contained compiler module in `api/compiler/` and `frontend/api/compiler/`.
+- Created standalone `api/index.py` and `api/requirements.txt` configured for
+  Vercel `@vercel/python` serverless deployment.
+- Configured root `vercel.json` with routes directing `/api/(.*)` to `api/index.py`
+  and client routes to the static Vite build.
+- Live deployment verified online at https://compiler-project.vercel.app with
+  real Python compilation.
+
+3. COST-MODEL FORMULA RECONCILIATION
+--------------------------------------------------------------------------------
+- Audited 4-term analytical formulas in `backend/compiler/cost_model.py` and
+  `frontend/src/components/PIMMappingViewer.jsx`.
+- Fixed AST traversal methods (`_extract_loop_iterations`, `_extract_declared_bytes`,
+  `check_stride`) to seamlessly support both ASTNode class instances and JSON
+  serialized dictionary representations.
+- Reconciled default `layout_transform_cycles_per_byte` to canonical `0.25`
+  across backend (`cost_model.py`, `performance_evaluator.py`) and frontend
+  (`PIMMappingViewer.jsx`).
+- Verified mathematical invariant:
+  Total Cost = Compute Cost + Transfer Cost + Layout Cost + Sync Overhead
+  Speedup = CPU_ONLY Total Cost / Selected Strategy Total Cost.
+  Small workloads correctly select CPU_ONLY (overhead dominates).
+  Large memory-bound workloads (>= 32 elements) correctly select DIRECT_PIM (> 1.25x).
+
+4. IR VIEWER UNIFIED TABLE SYNCHRONIZATION & FULL INSTRUCTION DISPLAY
+--------------------------------------------------------------------------------
+- Issue: IR viewer previously used disconnected `<div className="code-line-numbers">`
+  and `<pre className="code-content-pre">`. Because font sizes differed (0.75rem vs 0.8rem),
+  line numbers drifted upward, causing line 24 of numbers to sit next to line 23 of text.
+  Furthermore, `max-height: 480px` truncated the display at line 24, hiding instructions
+  25 through 38.
+- Fix:
+  * Replaced disconnected flex/pre containers with a unified HTML table (`ir-formatted-table`).
+  * Every line is an authentic table row (`<tr>`), guaranteeing 100% vertical and horizontal
+    alignment between instruction index `#`, `Opcode`, and `Operands`.
+  * Removed `max-height: 480px` constraint so all 38 generated instructions are visible in full view.
+  * Preserved full-width 100% responsive styling with uniform column widths.
+  * Real-time search filter preserves authentic instruction index (`origIndex`) and "Copy IR"
+    exports the complete 3AC representation.
+
+5. ACADEMIC EVALUATION BENCHMARK SUITE
+--------------------------------------------------------------------------------
+All 7 canonical demonstration benchmarks verified on the live compiler pipeline:
+1. Basic Integer Arithmetic:
+   - Input: int a = 15; int b = 25; int c = (a + b) * 2; return c;
+   - Output: Success, IR: 15 instructions, PIM: 2, CPU: 13, Selected: CPU_ONLY, Speedup: 1.00x
+2. Array Initialization & Arithmetic:
+   - Input: int a[4]={1,2,3,4}; int b[4]={10,20,30,40}; int c[4]={0}; c[i]=a[i]+b[i];
+   - Output: Success, IR: 63 instructions, PIM: 18, CPU: 45, Selected: CPU_ONLY, Speedup: 1.00x
+3. Array Summation Loop (Default Program):
+   - Input: int arr[4]={10,20,30,40}; int sum=0; for(int i=0;i<4;i++) sum += arr[i];
+   - Output: Success, IR: 38 instructions, PIM: 8, CPU: 30, Selected: CPU_ONLY, Speedup: 1.00x
+4. PIM-Accelerated Large Array (32 elements):
+   - Input: int data[32]={...}; for(int i=0;i<32;i++) total += data[i];
+   - Output: Success, IR: 122 instructions, PIM: 36, CPU: 86, Selected: DIRECT_PIM, Speedup: 1.25x
+5. CPU Fallback (Division):
+   - Input: for(int i=0;i<4;i++) { val = arr[i] / 10; result += val; }
+   - Output: Success, IR: 43 instructions, PIM: 8, CPU: 35, Selected: CPU_ONLY, Speedup: 1.00x
+6. Invalid Program (Syntax Error):
+   - Input: int a = 10 \n int b = 20;
+   - Output: Compilation Error: "Syntax error at line 2, column 1: Expected ';' after variable declaration (got 'int')"
+7. Invalid Program (Semantic Error):
+   - Input: int x = 10; total = x + 20;
+   - Output: Semantic Error: "Undeclared variable 'total'"
+
+6. AUTOMATED TEST SUITE STATUS
+--------------------------------------------------------------------------------
+- Test Framework: pytest 7.4.3 on Python 3.12.10
+- Total Tests: 78
+- Passed: 78 (100% Pass Rate)
+- Failed: 0
+- Skipped: 0
+- Duration: 0.85s
+- Test Breakdown:
+    * test_api.py:                    7 passed
+    * test_compiler_orchestration.py: 5 passed
+    * test_cost_model.py:             8 passed
+    * test_extended_c.py:             5 passed
+    * test_ir_generator.py:           7 passed
+    * test_lexer.py:                  8 passed
+    * test_parser.py:                 9 passed
+    * test_performance.py:            14 passed
+    * test_pim_mapper.py:             8 passed
+    * test_semantic.py:               7 passed
+- Frontend Production Build:
+    * Vite v8.3.4 client environment
+    * Result: 115 modules transformed, 0 errors, built in 208ms.
+
+7. CONFIRMATION OF ARCHITECTURAL BOUNDARIES
+--------------------------------------------------------------------------------
+- Original Phase 3 (CPU/PIM execution simulation, cycle-step animation, canvas trace)
+  remains completely removed and was not reintroduced.
+- All performance evaluation strictly derives from the compiler's analytical 4-term
+  cost model and static IR workload profile.
+- Figures are explicitly labeled as analytical simulation estimates, not physical
+  hardware measurements.
 ================================================================================

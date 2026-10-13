@@ -4,9 +4,9 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-green.svg)](https://fastapi.tiangolo.com/)
 [![React 19](https://img.shields.io/badge/React-19.0-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-6.0-purple.svg)](https://vitejs.dev/)
-[![Tests](https://img.shields.io/badge/Tests-58%20Passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-78%20Passed-brightgreen.svg)]()
 
-An educational compiler and simulation platform that accepts C source programs, transforms them into an intermediate representation (IR), identifies operations eligible for in-memory acceleration (Processing in Memory), evaluates research-informed analytical cost models, maps them to simulated PIM instructions, and prepares execution traces for cycle-accurate CPU and PIM simulation.
+An educational, research-informed compiler and analytical evaluation platform that accepts C source programs, transforms them into structured three-address code (3AC) intermediate representation (IR), identifies operations eligible for in-memory acceleration (Processing in Memory), evaluates research-informed analytical 4-term cost models across candidate execution strategies (CPU_ONLY, DIRECT_PIM, TRANSFORMED_PIM), maps instructions to simulated PIM operations and CPU fallback, and presents an interactive developer dashboard.
 
 ---
 
@@ -165,17 +165,19 @@ Execute the automated test suite with pytest:
 python -m pytest backend/tests -v
 ```
 
-All 58 unit and integration tests pass in ~0.38s:
+All 78 unit and integration tests pass in ~0.85s (100% pass rate):
+- `test_api.py` (7 tests): Endpoints `/api/health`, `/api/examples`, `/api/compile`, and `/api/evaluate` schema validation and error responses.
+- `test_compiler_orchestration.py` (5 tests): End-to-end 5-stage pipeline execution, error cascade handling.
 - `test_cost_model.py` (8 tests): Small workload CPU preference, large memory-bound PIM offload, unsupported operation fallback, 4-term formula mathematical integrity, strided pattern detection, layout transformation evaluation, explicit unknown handling, cost enforcement.
+- `test_extended_c.py` (5 tests): Preprocessor directives (#include, #define), functions, pointers, floats, and structs with transparent CPU fallback.
+- `test_ir_generator.py` (7 tests): 3AC opcode generation, operator precedence preservation, array loads/stores, loop control flow, deterministic temporary numbering.
 - `test_lexer.py` (8 tests): Token identification, line/col tracking, comment stripping, invalid character detection.
 - `test_parser.py` (9 tests): Precedence climbing, array indexing, loop structures, syntax error diagnostics.
-- `test_semantic.py` (7 tests): Scoped symbol table, undeclared variables, duplicate declarations, bounds checking.
-- `test_ir_generator.py` (7 tests): 3AC opcode generation, operator precedence preservation, array loads/stores, loop control flow, deterministic temporary numbering.
+- `test_performance.py` (14 tests): 4-term analytical formulas, speedup calculations, sensitivity analysis, custom parameters, zero denominator safety.
 - `test_pim_mapper.py` (8 tests): PIM arithmetic mapping, CPU division/modulo fallback, array-access memory rules, comparisons, mixed CPU/PIM execution, fallback defaults.
-- `test_compiler_orchestration.py` (5 tests): End-to-end 5-stage pipeline execution, error cascade handling.
-- `test_api.py` (6 tests): Endpoints `/api/health`, `/api/examples`, `/api/compile` schema validation.
+- `test_semantic.py` (7 tests): Scoped symbol table, undeclared variables, duplicate declarations, bounds checking.
 
 ---
 
 ## 7. Handover Record
-The persistent handover file [`change`](./change) is maintained in the project root. It documents the complete roadmap, completed features, centralized policies, research-informed cost model formulas, test verification results, and preparation for CPU/PIM cycle simulation.
+The persistent handover file [`change`](./change) is maintained in the project root. It documents the complete 4-phase architecture, completed features, centralized policies, research-informed cost model formulas, test verification results, and historical implementation logs.
