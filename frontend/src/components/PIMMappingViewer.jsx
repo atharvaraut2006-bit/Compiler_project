@@ -536,11 +536,6 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
                 </td>
                 <td className="mapping-reason-cell">
                   <span className="mapping-reason-text">{instr.reason}</span>
-                  {instr.cost_justification && (
-                    <div className="mapping-cost-note">
-                      {instr.cost_justification}
-                    </div>
-                  )}
                 </td>
                 <td>
                   <span className="ir-region-tag">
