@@ -210,11 +210,6 @@ export const App = () => {
           <div className="panel pipeline-panel">
             <div className="panel-header-simple">
               <span className="section-title">Compilation Pipeline</span>
-              {compilationResult && (
-                <span className={`badge-pill ${compilationResult.success ? 'pill-success' : 'pill-error'}`}>
-                  {compilationResult.success ? '✓ Build Passed' : '✗ Build Failed'}
-                </span>
-              )}
             </div>
             <StageStatusPanel
               stages={compilationResult ? compilationResult.stages : null}

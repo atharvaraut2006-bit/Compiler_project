@@ -7,7 +7,6 @@ import {
   FaScaleBalanced,
   FaChevronDown,
   FaChevronUp,
-  FaCircleInfo,
   FaCircleCheck,
   FaCircleXmark,
   FaTriangleExclamation,
@@ -887,12 +886,6 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
             })}
           </div>
 
-          <div className="academic-disclaimer-box">
-            <FaCircleInfo className="disclaimer-icon" />
-            <div className="disclaimer-text">
-              Estimates are derived from the analytical compiler cost model using instruction cycle counts and memory-bus bandwidth, rather than physical silicon benchmarking.
-            </div>
-          </div>
         </div>
       </div>
 
@@ -905,9 +898,6 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
           </div>
           <span className="badge-academic">Bus Bandwidth & Traffic Model</span>
         </div>
-        <p className="chart-description">
-          Static analytical breakdown of declared memory footprint, memory bus transfer overheads, and offload savings for the selected strategy.
-        </p>
 
         <div className="perf-grid-two-col">
           {/* Data Movement & Transfer Latency */}

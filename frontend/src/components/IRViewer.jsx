@@ -130,12 +130,24 @@ export const IRViewer = ({ ir }) => {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const formatOperatorDisplay = (op) => {
+    if (!op) return '';
+    const s = String(op).trim();
+    if (s === 'ADD') return 'ADD (+)';
+    if (s === 'SUB') return 'SUB (-)';
+    if (s === 'MUL') return 'MUL (*)';
+    if (s === 'DIV') return 'DIV (/)';
+    if (s === 'MOD') return 'MOD (%)';
+    return s;
+  };
+
   const getOpcodeBadgeClass = (opcode) => {
-    if (['ADD', 'SUB', 'MUL', 'DIV', 'MOD'].includes(opcode)) return 'badge-op-arithmetic';
-    if (opcode && String(opcode).startsWith('COMPARE_')) return 'badge-op-compare';
-    if (['LOAD', 'STORE', 'LOAD_INDEXED', 'STORE_INDEXED'].includes(opcode)) return 'badge-op-mem';
-    if (['JUMP', 'BRANCH', 'LABEL'].includes(opcode)) return 'badge-op-control';
-    if (opcode === 'DECLARE') return 'badge-op-decl';
+    const raw = String(opcode || '').split(' ')[0];
+    if (['ADD', 'SUB', 'MUL', 'DIV', 'MOD'].includes(raw)) return 'badge-op-arithmetic';
+    if (raw && raw.startsWith('COMPARE_')) return 'badge-op-compare';
+    if (['LOAD', 'STORE', 'LOAD_INDEXED', 'STORE_INDEXED'].includes(raw)) return 'badge-op-mem';
+    if (['JUMP', 'BRANCH', 'LABEL'].includes(raw)) return 'badge-op-control';
+    if (raw === 'DECLARE') return 'badge-op-decl';
     return 'badge-op-default';
   };
 
@@ -233,7 +245,7 @@ export const IRViewer = ({ ir }) => {
                     <>
                       <td className="col-ir-op">
                         <span className={`ir-opcode-pill ${getOpcodeBadgeClass(instr.operator || instr.opcode)}`}>
-                          {instr.operator || instr.opcode}
+                          {formatOperatorDisplay(instr.operator || instr.opcode)}
                         </span>
                       </td>
                       <td className="col-ir-operands font-mono">
@@ -265,7 +277,7 @@ export const IRViewer = ({ ir }) => {
                   <td className="col-ir-idx text-muted font-mono">{instr.origIndex}</td>
                   <td className="col-ir-op">
                     <span className={`ir-opcode-pill ${getOpcodeBadgeClass(instr.operator || instr.opcode)}`}>
-                      {instr.operator || instr.opcode}
+                      {formatOperatorDisplay(instr.operator || instr.opcode)}
                     </span>
                   </td>
                   <td className="col-ir-arg1 font-mono">{instr.arg1 || '—'}</td>
