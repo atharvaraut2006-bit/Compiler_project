@@ -786,7 +786,7 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
                       </div>
 
                       <div className="stacked-bar-track-wrapper">
-                        <div className="stacked-bar-track" style={{ width: `${Math.max(barWidthPct, 15)}%` }}>
+                        <div className="stacked-bar-track" style={{ width: '100%' }}>
                           {computePct > 0 && (
                             <div
                               className="bar-seg seg-compute"
@@ -877,33 +877,39 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
           </p>
 
           <div className="speedup-comparison-bars">
-            {activeData.strategies.filter(s => s.is_valid).map((strat) => {
-              const speedup = strat.speedup_vs_cpu ?? 1.0;
-              const isFaster = speedup > 1.0;
-              const isSelected = strat.strategy === activeData.selected_strategy;
+            {(() => {
+              const validStrategies = activeData.strategies.filter(s => s.is_valid);
+              const maxSpeedup = Math.max(...validStrategies.map(s => s.speedup_vs_cpu ?? 1.0), 1.0);
 
-              return (
-                <div key={strat.strategy} className={`speedup-row ${isSelected ? 'speedup-row-selected' : ''}`}>
-                  <div className="speedup-label-row">
-                    <span className="speedup-strat-title">
-                      {strat.strategy}
-                      {isSelected && <span className="pill-active-small">Optimal</span>}
-                    </span>
-                    <span className="speedup-strat-val">
-                      {speedup.toFixed(2)}x
-                      <span className="speedup-cycle-hint">({strat.total_cost.toFixed(1)} cyc)</span>
-                    </span>
-                  </div>
+              return validStrategies.map((strat) => {
+                const speedup = strat.speedup_vs_cpu ?? 1.0;
+                const isFaster = speedup > 1.0;
+                const isSelected = strat.strategy === activeData.selected_strategy;
+                const fillWidthPct = Math.min(Math.max((speedup / maxSpeedup) * 100, 8), 100);
 
-                  <div className="speedup-progress-bg">
-                    <div
-                      className={`speedup-progress-fill ${isFaster ? 'fill-faster' : 'fill-baseline'}`}
-                      style={{ width: `${Math.min(Math.max((speedup / 2.0) * 100, 10), 100)}%` }}
-                    ></div>
+                return (
+                  <div key={strat.strategy} className={`speedup-row ${isSelected ? 'speedup-row-selected' : ''}`}>
+                    <div className="speedup-label-row">
+                      <span className="speedup-strat-title">
+                        {strat.strategy}
+                        {isSelected && <span className="pill-active-small">Optimal</span>}
+                      </span>
+                      <span className="speedup-strat-val">
+                        {speedup.toFixed(2)}x
+                        <span className="speedup-cycle-hint">({strat.total_cost.toFixed(1)} cyc)</span>
+                      </span>
+                    </div>
+
+                    <div className="speedup-progress-bg">
+                      <div
+                        className={`speedup-progress-fill ${isFaster ? 'fill-faster' : 'fill-baseline'}`}
+                        style={{ width: `${fillWidthPct}%` }}
+                      ></div>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
 
         </div>
