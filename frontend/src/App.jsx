@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { compileCode, checkHealth, API_BASE } from './api/client';
+import { compileCode, API_BASE } from './api/client';
 import CodeEditor from './components/CodeEditor';
 import ExampleSelector from './components/ExampleSelector';
 import StageStatusPanel from './components/StageStatusPanel';
@@ -27,39 +27,6 @@ export const App = () => {
   const [isCompiling, setIsCompiling] = useState(false);
   const [compilationResult, setCompilationResult] = useState(null);
   const [activeTab, setActiveTab] = useState('tokens'); // 'tokens', 'ast', 'semantic'
-  const [backendStatus, setBackendStatus] = useState({
-    online: null,
-    checking: true,
-    service: '',
-    version: '',
-    apiUrl: API_BASE,
-    errorHint: ''
-  });
-
-  const checkBackend = useCallback(async () => {
-    try {
-      const health = await checkHealth();
-      setBackendStatus({
-        online: health.online,
-        checking: false,
-        service: health.service || '',
-        version: health.version || '',
-        apiUrl: health.apiUrl || API_BASE,
-        errorHint: health.errorHint || ''
-      });
-      return health.online;
-    } catch {
-      setBackendStatus({
-        online: false,
-        checking: false,
-        service: '',
-        version: '',
-        apiUrl: API_BASE,
-        errorHint: 'Offline'
-      });
-      return false;
-    }
-  }, []);
 
   const handleCompile = useCallback(async () => {
     if (!sourceCode.trim()) {
@@ -71,19 +38,13 @@ export const App = () => {
     try {
       const result = await compileCode(sourceCode);
       setCompilationResult(result);
-      if (result.is_backend_error) {
-        setBackendStatus(prev => ({ ...prev, online: false, checking: false, errorHint: 'Unreachable' }));
-      } else {
-        setBackendStatus(prev => ({ ...prev, online: true, checking: false }));
-        if (result.stages?.semantic?.status === 'error') {
-          setActiveTab('semantic');
-        } else if (result.stages?.syntax?.status === 'error') {
-          setActiveTab('tokens');
-        }
+      if (result.stages?.semantic?.status === 'error') {
+        setActiveTab('semantic');
+      } else if (result.stages?.syntax?.status === 'error') {
+        setActiveTab('tokens');
       }
     } catch (err) {
       console.error('Compilation failed:', err);
-      setBackendStatus(prev => ({ ...prev, online: false, checking: false, errorHint: 'Unreachable' }));
       setCompilationResult({
         success: false,
         error: `Cannot connect to compiler backend at ${API_BASE}. ${err.message}`,
@@ -109,13 +70,6 @@ export const App = () => {
       setIsCompiling(false);
     }
   }, [sourceCode]);
-
-  // Check backend connection on mount and every 30 seconds
-  useEffect(() => {
-    checkBackend();
-    const interval = setInterval(checkBackend, 30000);
-    return () => clearInterval(interval);
-  }, [checkBackend]);
 
   // Auto-compile default program on initial mount so all stages & simulation are loaded
   useEffect(() => {
@@ -191,57 +145,7 @@ export const App = () => {
             <h1 className="brand-title">Compiler for Processing in Memory</h1>
           </div>
         </div>
-
-        <div className="header-actions">
-          <div
-            className={`backend-pill backend-${backendStatus.checking ? 'checking' : (backendStatus.online ? 'online' : 'offline')}`}
-            title={`Compiler API: ${backendStatus.apiUrl}`}
-          >
-            <span className="backend-dot"></span>
-            <span className="backend-label font-mono">
-              {backendStatus.checking
-                ? 'Backend: Connecting...'
-                : (backendStatus.online
-                    ? `Backend: Online (${backendStatus.service || 'FastAPI'})`
-                    : `Backend: Offline (${backendStatus.apiUrl})`)}
-            </span>
-            {!backendStatus.online && !backendStatus.checking && (
-              <button
-                className="backend-retry-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setBackendStatus(p => ({ ...p, checking: true }));
-                  checkBackend();
-                }}
-                title="Retry connecting to Python compiler backend"
-              >
-                ↻ Retry
-              </button>
-            )}
-          </div>
-        </div>
       </header>
-
-      {/* Backend Alert Banner if Offline */}
-      {!backendStatus.online && !backendStatus.checking && (
-        <div className="backend-alert-banner">
-          <div className="backend-alert-content">
-            <strong>⚠️ Compiler Backend Disconnected:</strong> Cannot reach the Python compiler at <code>{backendStatus.apiUrl}</code>.
-            <div className="backend-alert-hint">
-              To compile code, please start the Python FastAPI service: <code>python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000</code>
-            </div>
-          </div>
-          <button
-            className="btn btn-sm btn-retry-banner"
-            onClick={() => {
-              setBackendStatus(p => ({ ...p, checking: true }));
-              checkBackend();
-            }}
-          >
-            Reconnect
-          </button>
-        </div>
-      )}
 
       {/* Main Vertical Workspace Layout */}
       <main className="workspace-main">
