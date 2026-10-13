@@ -14,7 +14,6 @@ import {
   FaTable,
   FaChartColumn,
   FaChartPie,
-  FaMemory,
   FaSliders
 } from 'react-icons/fa6';
 import { evaluatePerformance } from '../api/client';
@@ -560,7 +559,6 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
       <div className="perf-section-card decision-explanation-box">
         <div className="card-title-row">
           <div className="title-with-icon">
-            <FaBolt className="section-title-icon" style={{ color: 'var(--accent)' }} />
             <h3 className="section-title">Why Was This Strategy Selected?</h3>
           </div>
           <div className="decision-header-badges">
@@ -877,7 +875,6 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
       <div className="perf-section-card">
         <div className="card-title-row">
           <div className="title-with-icon">
-            <FaMemory className="section-title-icon" style={{ color: '#0284c7' }} />
             <h3 className="section-title">Data Movement & Memory Traffic Modeling</h3>
           </div>
           <span className="badge-academic">Bus Bandwidth & Traffic Model</span>
@@ -1142,10 +1139,7 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
                     <span>Applying Assumptions...</span>
                   </>
                 ) : (
-                  <>
-                    <FaBolt />
-                    <span>Apply Assumptions</span>
-                  </>
+                  <span>Apply Assumptions</span>
                 )}
               </button>
 
