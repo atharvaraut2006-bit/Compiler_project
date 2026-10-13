@@ -10,16 +10,24 @@ export const IRViewer = ({ ir }) => {
   const formattedText = ir?.formatted || '';
 
   const filteredInstructions = useMemo(() => {
-    if (!filterText.trim()) return instructions;
-    const lower = filterText.toLowerCase();
-    return instructions.filter(
-      (instr) =>
-        instr.opcode?.toLowerCase().includes(lower) ||
-        instr.dest?.toLowerCase().includes(lower) ||
-        instr.arg1?.toLowerCase().includes(lower) ||
-        instr.arg2?.toLowerCase().includes(lower) ||
-        instr.formatted?.toLowerCase().includes(lower)
-    );
+    if (!filterText || !filterText.trim()) return instructions;
+    const lower = filterText.toLowerCase().trim();
+    return instructions.filter((instr) => {
+      const op = String(instr.opcode ?? '').toLowerCase();
+      const dest = String(instr.dest ?? '').toLowerCase();
+      const a1 = String(instr.arg1 ?? '').toLowerCase();
+      const a2 = String(instr.arg2 ?? '').toLowerCase();
+      const a3 = String(instr.arg3 ?? '').toLowerCase();
+      const fmt = String(instr.formatted ?? '').toLowerCase();
+      return (
+        op.includes(lower) ||
+        dest.includes(lower) ||
+        a1.includes(lower) ||
+        a2.includes(lower) ||
+        a3.includes(lower) ||
+        fmt.includes(lower)
+      );
+    });
   }, [instructions, filterText]);
 
   const handleCopy = () => {
@@ -30,7 +38,7 @@ export const IRViewer = ({ ir }) => {
 
   const getOpcodeBadgeClass = (opcode) => {
     if (['ADD', 'SUB', 'MUL', 'DIV', 'MOD'].includes(opcode)) return 'badge-op-arithmetic';
-    if (opcode.startsWith('COMPARE_')) return 'badge-op-compare';
+    if (opcode && String(opcode).startsWith('COMPARE_')) return 'badge-op-compare';
     if (['LOAD', 'STORE', 'LOAD_INDEXED', 'STORE_INDEXED'].includes(opcode)) return 'badge-op-mem';
     if (['JUMP', 'BRANCH', 'LABEL'].includes(opcode)) return 'badge-op-control';
     if (opcode === 'DECLARE') return 'badge-op-decl';
@@ -56,6 +64,9 @@ export const IRViewer = ({ ir }) => {
             placeholder="Filter IR instructions..."
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.preventDefault();
+            }}
           />
           <span className="ir-count-badge">
             {filteredInstructions.length} instruction{filteredInstructions.length === 1 ? '' : 's'}

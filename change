@@ -1288,3 +1288,37 @@ UI ENHANCEMENT: HEADER SIMPLIFICATION & FULL-WIDTH BALANCED DATA TABLES
    - Frontend production build (`npm run build`) succeeded in 325ms with 0 errors.
    - Backend test suite: 78/78 tests passed (100% pass rate).
 ================================================================================
+================================================================================
+DATE: 2026-10-13
+UI ENHANCEMENT & BUG FIX: IR TABLE FULL-WIDTH EXPANSION & FILTER CRASH PREVENTION
+================================================================================
+1. OBJECTIVE:
+   - Make the Intermediate Representation (IR) table occupy 100% full width of the
+     card/website with uniform, proportional column spacing.
+   - Fix the bug where clicking on or typing in the "Filter IR instructions..." input
+     caused an unhandled TypeError crash and triggered an unexpected page reload.
+
+2. ROOT CAUSE & BUG FIX:
+   - In frontend/src/components/IRViewer.jsx, the filter `useMemo` called `instr.arg1?.toLowerCase()`.
+     For constant numbers (e.g. numeric literals `10`, `0`, `1` in IR instructions), `typeof 10` is
+     a number, so `(10)?.toLowerCase` evaluated to `undefined`, immediately throwing
+     `TypeError: Cannot read properties of undefined (reading 'includes')`.
+     This uncaught exception during state update unmounted the React component and triggered
+     a full page reload.
+   - Fixed by wrapping all instruction properties in `String(instr.arg1 ?? '')` safe stringification
+     before checking `.toLowerCase().includes(...)`.
+   - Added `onKeyDown` handler preventing default on `Enter` key presses.
+
+3. FULL-WIDTH TABLE EXPANSION:
+   - In frontend/src/App.css, removed `max-width: 820px` from `.ir-table-wrapper` and set
+     `width: 100%; max-width: 100%`.
+   - Set `.ir-table` to `width: 100%; border-collapse: collapse; table-layout: fixed;`.
+   - Broadened row height with comfortable padding (`padding: 0.75rem 1.25rem;`).
+   - Balanced columns across 100% width:
+     `col-ir-idx` (70px centered), `col-ir-op` (22%), `col-ir-dest` (20%),
+     `col-ir-arg1` (24%), `col-ir-arg2` (20%), `col-ir-line` (14% left-aligned).
+
+4. VERIFICATION:
+   - Frontend production build (`npm run build`) succeeded in 220ms with 0 errors.
+   - Pushed directly to GitHub (`main`) for automatic live deployment on Vercel.
+================================================================================
