@@ -53,7 +53,21 @@ class PIMPolicy:
         "CONST": "CPU_CONST",
         "LOAD": "CPU_LOAD",
         "STORE": "CPU_STORE",
-        "PRINT": "CPU_PRINT"
+        "PRINT": "CPU_PRINT",
+        "CALL": "CPU_CALL",
+        "ADDRESS_OF": "CPU_ADDR",
+        "LOAD_PTR": "CPU_LOAD_PTR",
+        "STORE_PTR": "CPU_STORE_PTR",
+        "LOAD_FIELD": "CPU_FIELD",
+        "STORE_FIELD": "CPU_STORE_FIELD",
+        "CONST_STR": "CPU_CONST_STR",
+        "STRUCT_DEF": "CPU_STRUCT",
+        "BIT_AND": "CPU_BIT_AND",
+        "BIT_OR": "CPU_BIT_OR",
+        "BIT_XOR": "CPU_BIT_XOR",
+        "BIT_NOT": "CPU_BIT_NOT",
+        "SHIFT_LEFT": "CPU_SHIFT_LEFT",
+        "SHIFT_RIGHT": "CPU_SHIFT_RIGHT"
     }
 
     # 3. Explicit Memory Access Eligibility Rules:
@@ -409,7 +423,124 @@ class PIMMapper:
                 "formatted": f"CPU_PRINT {arg1}"
             }
 
-        # Rule 11: General Fallback for Unsupported / Unrecognized Operations
+        # Rule 11: Function Calls (CALL) -> CPU Fallback
+        if opcode == "CALL":
+            return {
+                "ir_id": instr.get("id"),
+                "ir_opcode": opcode,
+                "target": "CPU",
+                "mapped_instruction": "CPU_CALL",
+                "is_pim": False,
+                "dest": dest,
+                "arg1": arg1,
+                "arg2": arg2,
+                "arg3": None,
+                "reason": (
+                    f"Function invocation '{arg1}()' requires stack frame setup, argument marshalling, "
+                    "and host register conventions managed exclusively by the host CPU."
+                ),
+                "memory_metadata": {
+                    "operation_type": "function_call",
+                    "memory_region": "host_cache",
+                    "bytes_transferred": 0
+                },
+                "formatted": instr.get("formatted", f"CPU_CALL {dest}, {arg1}({arg2 or ''})")
+            }
+
+        # Rule 12: Pointer Operations (ADDRESS_OF, LOAD_PTR, STORE_PTR) -> CPU Fallback
+        if opcode in ("ADDRESS_OF", "LOAD_PTR", "STORE_PTR"):
+            cpu_op = f"CPU_{opcode}"
+            return {
+                "ir_id": instr.get("id"),
+                "ir_opcode": opcode,
+                "target": "CPU",
+                "mapped_instruction": cpu_op,
+                "is_pim": False,
+                "dest": dest,
+                "arg1": arg1,
+                "arg2": arg2,
+                "arg3": None,
+                "reason": (
+                    f"Pointer operation '{opcode}' requires host virtual memory address translation, "
+                    "pointer chasing, and host MMU resolution; routed to host CPU cache hierarchy."
+                ),
+                "memory_metadata": {
+                    "operation_type": "pointer_op",
+                    "memory_region": "host_cache",
+                    "bytes_transferred": 4 if opcode != "ADDRESS_OF" else 0
+                },
+                "formatted": instr.get("formatted", f"{cpu_op}")
+            }
+
+        # Rule 13: Struct & Member Access (LOAD_FIELD, STORE_FIELD, STRUCT_DEF) -> CPU Fallback
+        if opcode in ("LOAD_FIELD", "STORE_FIELD", "STRUCT_DEF"):
+            cpu_op = f"CPU_{opcode}"
+            return {
+                "ir_id": instr.get("id"),
+                "ir_opcode": opcode,
+                "target": "CPU",
+                "mapped_instruction": cpu_op,
+                "is_pim": False,
+                "dest": dest,
+                "arg1": arg1,
+                "arg2": arg2,
+                "arg3": None,
+                "reason": (
+                    f"Composite struct field operation '{opcode}' is resolved via host byte-offset calculation "
+                    "on host activation records / heap layout."
+                ),
+                "memory_metadata": {
+                    "operation_type": "struct_op",
+                    "memory_region": "host_cache",
+                    "bytes_transferred": 4 if opcode != "STRUCT_DEF" else 0
+                },
+                "formatted": instr.get("formatted", f"{cpu_op}")
+            }
+
+        # Rule 14: String Literals (CONST_STR) -> CPU Fallback
+        if opcode == "CONST_STR":
+            return {
+                "ir_id": instr.get("id"),
+                "ir_opcode": opcode,
+                "target": "CPU",
+                "mapped_instruction": "CPU_CONST_STR",
+                "is_pim": False,
+                "dest": dest,
+                "arg1": arg1,
+                "arg2": None,
+                "arg3": None,
+                "reason": f"String constant \"{arg1}\" resides in host read-only data segment (.rodata).",
+                "memory_metadata": {
+                    "operation_type": "string_constant",
+                    "memory_region": "host_rodata",
+                    "bytes_transferred": len(str(arg1)) + 1 if arg1 else 0
+                },
+                "formatted": instr.get("formatted", f"CPU_CONST_STR {dest}")
+            }
+
+        # Rule 15: Bitwise and Shift Operations -> CPU Fallback
+        if opcode in ("BIT_AND", "BIT_OR", "BIT_XOR", "BIT_NOT", "SHIFT_LEFT", "SHIFT_RIGHT"):
+            cpu_op = f"CPU_{opcode}"
+            return {
+                "ir_id": instr.get("id"),
+                "ir_opcode": opcode,
+                "target": "CPU",
+                "mapped_instruction": cpu_op,
+                "is_pim": False,
+                "dest": dest,
+                "arg1": arg1,
+                "arg2": arg2,
+                "arg3": None,
+                "reason": f"Scalar bitwise operation '{opcode}' executes directly on host CPU registers.",
+                "memory_metadata": {
+                    "operation_type": "bitwise",
+                    "memory_region": "host_alu",
+                    "bytes_transferred": 0
+                },
+                "formatted": instr.get("formatted", f"{cpu_op} {dest}, {arg1}")
+            }
+
+        # Rule 16: General Fallback for Unsupported / Unrecognized Operations
         return {
             "ir_id": instr.get("id"),
             "ir_opcode": opcode,

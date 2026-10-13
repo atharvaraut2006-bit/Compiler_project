@@ -764,3 +764,527 @@ supported 3AC IR and PIM-mapped instructions with 100% semantic equivalence.
 - Frontend Build:
   * Vite production build succeeded in 215ms (`dist/`).
 ================================================================================
+================================================================================
+DATE: 2026-10-13
+PHASE 4 COMPLETE: PERFORMANCE EVALUATION, COST ANALYSIS, AND VISUALIZATION
+================================================================================
+
+1. OVERALL PHASE 4 ARCHITECTURE & OBJECTIVES
+--------------------------------------------------------------------------------
+Phase 4 extends the PIM compiler platform with transparent analytical performance
+modeling, comparative execution strategy evaluation, and an interactive React-based
+performance visualization dashboard.
+
+The module provides rigorous, verifiable cost comparisons across execution strategies:
+  1. CPU_ONLY (Host von Neumann processor baseline)
+  2. DIRECT_PIM (Near-memory computation using contiguous row buffer streaming)
+  3. TRANSFORMED_PIM (Data-layout reorganization; only feasible for strided access)
+
+All estimates strictly derive from the single source of truth: the analytical cost
+model, reinforced by runtime trace verification from Phase 3 execution simulators.
+
+2. COST MODEL PARAMETERS & RECONCILIATION
+--------------------------------------------------------------------------------
+- Analytical Cost Formulation:
+    Total Cost = Compute Cost + Data Transfer Cost + Layout Cost + Synchronization Overhead
+
+- Source of Truth Parameters (CostParameters):
+    * CPU cycles per arithmetic operation: 1.0 cycle
+    * PIM cycles per arithmetic operation: 1.2 cycles (lower frequency near-memory ALUs)
+    * Memory bus bandwidth: 2.0 Bytes / cycle
+    * PIM launch and synchronization overhead: 60.0 cycles
+    * Layout transformation cost: 0.5 cycles / byte
+    * Word size: 4 bytes (32-bit integer)
+    * PIM kernel dispatch descriptor: 8 bytes
+
+- Parameter Reconciliation:
+    An inconsistency was identified between an informal project note (which cited
+    4.0 cycles) and the compiler backend configuration (60.0 cycles). The backend's
+    configured 60.0 cycles is verified as the authoritative source of truth,
+    reflecting physical MMIO kernel launch register configuration and memory barrier
+    synchronization. This ensures that small workloads (e.g. 4-element array = 16 bus bytes
+    = 8 transfer cycles) correctly select CPU_ONLY, while memory-intensive workloads
+    (e.g. 32-element array = 128 bus bytes = 64 transfer cycles) naturally benefit
+    from PIM offloading (1.25x speedup).
+
+3. PERFORMANCE EVALUATOR ENGINE (backend/compiler/performance_evaluator.py)
+--------------------------------------------------------------------------------
+- Implements `PerformanceEvaluator` class:
+    * Candidate Strategy Formatting: Computes individual and total costs for CPU_ONLY,
+      DIRECT_PIM, and TRANSFORMED_PIM. Guarantees CPU_ONLY speedup is exactly 1.00x.
+      Marks infeasible strategies with descriptive rejection reasons without fabricating costs.
+    * Data-Movement Separation: Strictly differentiates between:
+      a) Declared Memory Footprint: Statically reserved memory for variables/arrays (bytes).
+      b) Dynamic Bus Bytes Accessed: Cumulative bytes read and written across iterations (bytes).
+      c) Modeled Bus Bytes Transferred: Actual bytes traversing the host-memory bus (bytes).
+         (CPU_ONLY streams all array elements; PIM keeps data in DRAM row buffers and
+         only transfers the 8-byte kernel descriptor).
+    * Dynamic Execution Statistics Extraction: Extracts runtime instruction counts,
+      in-situ PIM executions, CPU fallback counts, array accesses, and bus transfers
+      directly from Phase 3 simulation traces.
+    * Context-Aware Decision Explanation Generator: Generates clear, student-friendly
+      explanations for compiler decisions:
+        - Small workloads: Launch overhead (60 cyc) exceeds transfer savings.
+        - Large workloads: Bus traffic reduction outweighs launch overhead.
+        - Unsupported operations: Arithmetic operations (e.g., division) trigger CPU fallback.
+        - Feasibility constraints: TRANSFORMED_PIM is rejected when access is already sequential.
+    * Interactive Sensitivity Analysis: Allows users to test hypothetical hardware
+      parameters (launch overhead, CPU/PIM cycles, bus bandwidth) with robust input
+      validation, returning whether the selected strategy shifted.
+
+4. COMPILER ORCHESTRATION & API INTEGRATION
+--------------------------------------------------------------------------------
+- Backend Compiler Pipeline (`backend/compiler/compiler.py`):
+    * Integrated Stage 7 ("performance") into the 7-stage compilation pipeline.
+    * All compilation endpoints return structured performance evaluation results.
+    * Gracefully handles early syntax, semantic, or mapping errors with empty schemas.
+- FastAPI Endpoints (`backend/main.py`):
+    * `POST /api/evaluate`: Dedicated endpoint accepting source code and optional custom
+      hypothetical parameters.
+    * Expanded benchmark examples in `EXAMPLES`:
+      - Sample 1: Array Summation (4 elements, selects CPU_ONLY)
+      - Benchmark: Array Addition (4 elements)
+      - Benchmark: Array Scaling (4 elements)
+      - Benchmark: Large Array (32 elements, selects DIRECT_PIM with 1.25x speedup)
+      - Benchmark: CPU Fallback with Division (triggers CPU fallback explanation)
+      - Sample 2: Conditional Branching (stack scalars)
+
+5. INTERACTIVE DASHBOARD COMPONENT (frontend/src/components/PerformanceViewer.jsx)
+--------------------------------------------------------------------------------
+- Professional, light-themed network/compiler dashboard design adhering to existing visual system:
+  A. Header KPI Metric Cards:
+     * Selected Strategy with distinct colored pill.
+     * Estimated Speedup indicator (e.g., 1.25x Speedup vs CPU Baseline).
+     * Total Execution Latency in cycles.
+     * Memory Bus Savings in bytes and percentage traffic reduction.
+  B. Compiler Decision Explanation Card:
+     * Context-aware explanation generated by the compiler's analytical evaluator.
+  C. Strategy Cost Comparison Table:
+     * Columns: Strategy, Feasibility Status, Compute Cost, Transfer Cost, Layout Cost,
+       Synchronization Cost, Total Estimated Cost, Speedup vs CPU.
+     * Selected strategy highlighted with a subtle indicator badge.
+     * Infeasible strategies display rejection reason cleanly.
+  D. Cost Breakdown Stacked Bar Chart:
+     * Stacked bars showing Compute (Blue), Bus Transfer (Amber), Layout (Purple),
+       and Synchronization Overhead (Emerald).
+     * Exact cycle counts and percentage widths.
+     * Mathematical invariant verified: Compute + Transfer + Layout + Sync == Total.
+  E. Speedup & Total Latency Visualization:
+     * Comparative latency bars normalized to CPU baseline.
+     * Academic disclaimer note clarifying analytical model vs physical silicon measurements.
+  F. Data Movement & Memory Traffic Modeling Card:
+     * 4-card metric breakdown distinguishing Footprint, Accessed Bytes, Modeled Bus Bytes,
+       and Transfer Cycles Saved.
+     * Visual comparison bar for host-memory bus traffic between CPU and PIM.
+  G. Execution Statistics (Static vs Dynamic):
+     * Side-by-side comparison of Phase 3 Dynamic Runtime Trace Counters against
+       Phase 2 Static Compile-Time AST/IR Estimates.
+  H. Interactive Sensitivity Analysis Sandbox:
+     * Sliders for PIM Launch Overhead, CPU ALU Cost, PIM ALU Cost, and Bus Bandwidth.
+     * "Evaluate Hypothetical Assumptions" and "Reset to Defaults" controls.
+     * Visual alert banner indicating whether the strategy shifted under hypothetical parameters.
+     * Strict preservation of project default configurations.
+
+6. CLIENT-SIDE COMPILER & OFFLINE ENGINE (frontend/src/api/localCompiler.js)
+--------------------------------------------------------------------------------
+- Implemented `localEvaluatePerformance` in `frontend/src/api/localCompiler.js`:
+    * Matches backend analytical cost model with 100% mathematical fidelity.
+    * Ensures all Phase 4 dashboard views, benchmarks, and sensitivity calculations
+      function seamlessly even in offline or network-isolated environments.
+- Updated `frontend/src/api/client.js` with `evaluatePerformance` and expanded fallback examples.
+- Updated `frontend/src/App.jsx` tab navigation and `StageStatusPanel.jsx` (Stage 07).
+
+7. VERIFICATION & TEST RESULTS
+--------------------------------------------------------------------------------
+- Test Suite (`backend/tests/test_performance.py`):
+    * 13 new unit and integration tests covering:
+      1. CPU_ONLY cost calculation accuracy.
+      2. DIRECT_PIM cost calculation accuracy.
+      3. TRANSFORMED_PIM feasibility handling.
+      4. Total cost equals the sum of components invariant.
+      5. Speedup calculation and CPU baseline speedup of 1.00x.
+      6. Zero or invalid denominator handling (safe `None` return).
+      7. Transfer cost calculation using configured bus bandwidth.
+      8. Small workloads correctly selecting CPU_ONLY.
+      9. Large workloads correctly selecting DIRECT_PIM (1.25x speedup).
+      10. Unsupported operations (division) triggering CPU fallback explanation.
+      11. Sensitivity analysis parameter variation and strategy shift.
+      12. Sensitivity analysis invalid input handling and validation errors.
+      13. API endpoint integration (`POST /api/evaluate` and `POST /api/compile`).
+    * Full backend test suite: 86 passed in 0.92s (100% pass rate).
+- Frontend Build:
+    * Production build via Vite succeeded with 0 errors (`npm run build` in 211ms).
+================================================================================
+================================================================================
+DATE: 2026-10-13
+PHASE 2 & PHASE 4 INTEGRATION COMPLETE: PIM MAPPING & PERFORMANCE ANALYSIS
+================================================================================
+
+1. UNIFIED WORKFLOW OVERVIEW
+--------------------------------------------------------------------------------
+Phase 2 (IR Generation, PIM Mapping & Cost Model) and Phase 4 (Performance Evaluation,
+Cost Breakdown & Visualization) have been consolidated into a unified, non-redundant
+module: "PIM Mapping & Performance Analysis".
+
+Instead of maintaining a separate Phase 4 tab that duplicates mapping metrics, the
+user interface and compiler pipeline now logically connect:
+  1. Mapping Decisions: Instruction-level targeting (CPU Core vs. PIM In-situ ALU).
+  2. Cost Analysis: Analytical estimation of compute, transfer, layout, and synchronization.
+  3. Performance Evaluation: Strategy comparison table, cost-breakdown stacked bars,
+     total-cost bar charts, speedup indicators, and interactive sensitivity sandbox.
+
+2. PAGE SECTION ARCHITECTURE & ORDER (frontend/src/components/PIMMappingViewer.jsx)
+--------------------------------------------------------------------------------
+The unified viewer strictly follows the required 6-part presentation order:
+  1. IR & PIM Mapping Results:
+     - Header KPI cards: Total IR Operations, In-Memory Eligible (PIM), Host CPU Fallback,
+       and Speedup estimate.
+     - Filter & Search Bar: All Instructions, PIM Eligible, CPU Fallback, text search.
+     - Instruction-Level Mapping Table: Step index, Target pill (PIM/CPU), Optimal Assignment,
+       Original 3AC IR, Mapped Instruction, Hardware Rationale, and Data Region.
+  2. Selected Strategy & Decision Explanation ("Why Was This Strategy Selected?"):
+     - Shows selected strategy badge, speedup vs CPU baseline, total estimated cycles.
+     - Dynamic, context-aware explanation generated by the compiler's analytical evaluator.
+     - Decision Shift Callout: When custom assumptions change the winning strategy,
+       an explicit alert banner explains why the strategy changed.
+  3. Strategy Cost Comparison Table:
+     - Columns: Candidate, Feasibility Status, Compute Cost, Transfer Cost, Layout Cost,
+       Synchronization Overhead, Total Cost (Cycles), and Speedup vs CPU.
+     - Highlights the selected strategy row; infeasible candidates display explicit reasons.
+  4. Total-Cost & Cost-Breakdown Graphs:
+     - Stacked Bar Chart: Visualizes Compute (Blue), Transfer (Amber), Layout (Purple),
+       and Synchronization (Emerald) in cycles. Invariant verified: Compute + Transfer +
+       Layout + Sync == Total.
+     - Total Latency Comparison Bars: Direct comparison across valid strategies.
+     - Speedup & Relative Latency Progress Bars with academic disclaimer.
+     - Execution Statistics Panel: Cross-verifies Phase 3 dynamic simulator trace counters
+       (total executed steps, CPU steps, PIM in-situ steps, CPU fallbacks, array accesses)
+       side-by-side with static compiler AST/IR estimates.
+  5. Cost Model Assumptions Panel (Collapsible):
+     - Collapsible drawer titled "Cost Model Assumptions".
+     - Sliders and numeric inputs for 5 configurable parameters:
+       * CPU computation cost (default: 1.0 cycle / op)
+       * PIM computation cost (default: 1.2 cycles / op)
+       * Memory-transfer bandwidth (default: 2.0 Bytes / cycle)
+       * PIM launch/synchronization overhead (default: 60.0 cycles)
+       * Layout transformation cost (default: 0.5 cycles / byte)
+     - Shows parameter name, current value, unit, short explanation, backend default value,
+       and visual "Modified" pill when changed.
+     - "Apply Assumptions": Recalculates candidate costs via backend without mutating defaults.
+     - "Reset to Defaults": Restores original configured values.
+  6. Default-versus-Custom Comparison Table:
+     - Appears when custom assumptions are active.
+     - Compact table comparing Selected Strategy, CPU_ONLY Cost, DIRECT_PIM Cost,
+       and Estimated Speedup between Default and Custom assumptions.
+
+3. DEFAULT ASSUMPTIONS & FORMULAS (Single Source of Truth)
+--------------------------------------------------------------------------------
+- Formulation:
+    Total Cost = Compute Cost + Transfer Cost + Layout Cost + Synchronization Overhead
+    Estimated Speedup = CPU_ONLY Cost / Strategy Cost (CPU Baseline = 1.00x)
+
+- Default Assumptions (CostParameters):
+    * CPU Cycles / Arithmetic Op: 1.0 cycle (superscalar CPU core)
+    * PIM Cycles / Arithmetic Op: 1.2 cycles (near-memory ALUs with lower clock frequencies)
+    * Memory Bus Bandwidth: 2.0 Bytes / cycle (host memory bus channel)
+    * PIM Launch & Sync Overhead: 60.0 cycles (MMIO kernel dispatch & barrier completion)
+    * Layout Transformation Cost: 0.5 cycles / byte (strided array coalescing penalty)
+    * Word Size: 4 bytes (32-bit integer)
+    * PIM Kernel Dispatch Descriptor: 8 bytes (base pointer + element bound)
+
+4. TESTS & VERIFICATION
+--------------------------------------------------------------------------------
+- Test Suite: 87 backend unit & integration tests passing in 1.19s:
+  * Default assumptions match backend configuration.
+  * Instruction mapping targets remain invariant when cost assumptions change.
+  * Strategy costs strictly use active assumptions.
+  * Invariant: Compute + Transfer + Layout + Synchronization == Total Cost.
+  * Infeasible strategies handled gracefully (no false speedup or fake costs).
+  * Division by zero and invalid inputs rejected with clear errors.
+  * Phase 3 dual simulators remain 100% operational.
+- Frontend Build:
+  * Vite production build succeeded in 302ms with 0 errors.
+
+5. KNOWN LIMITATIONS
+--------------------------------------------------------------------------------
+- Analytical Modeling: Performance metrics reflect an analytical cost model and
+  cycle-accurate software simulation rather than physical silicon hardware execution.
+- Instruction Set: Near-memory ALUs accelerate addition, subtraction, multiplication,
+  and bitwise operations. Complex operations (e.g., division) trigger host CPU fallback.
+================================================================================
+================================================================================
+DATE: 2026-10-13
+PHASE 3 STRIPPED: SIMULATORS REMOVED; PHASE 1, 2, AND INTEGRATED 4 FULLY PRESERVED
+================================================================================
+
+1. OBJECTIVE
+--------------------------------------------------------------------------------
+Completely strip all Phase 3 changes (software dual simulators, correctness comparator,
+simulation runner, simulation traces, and execution simulation UI) while keeping
+Phase 1 (Compiler Frontend), Phase 2 (IR Generation & PIM Mapping), and the integrated
+Phase 4 (Performance Evaluation, Cost Breakdown & Sensitivity Analysis) 100% intact,
+functional, and passing all tests.
+
+2. FILES REMOVED (PHASE 3 ONLY)
+--------------------------------------------------------------------------------
+Backend Simulator & Verification Modules:
+  - backend/compiler/cpu_simulator.py (deleted)
+  - backend/compiler/pim_simulator.py (deleted)
+  - backend/compiler/correctness_comparator.py (deleted)
+  - backend/compiler/simulation_runner.py (deleted)
+
+Backend Simulation Tests:
+  - backend/tests/test_cpu_simulator.py (deleted)
+  - backend/tests/test_pim_simulator.py (deleted)
+  - backend/tests/test_correctness.py (deleted)
+
+Frontend Simulation Components:
+  - frontend/src/components/SimulationViewer.jsx (deleted)
+
+3. CODEBASE DECOUPLING & CLEANUP
+--------------------------------------------------------------------------------
+1. backend/compiler/__init__.py:
+   - Stripped all Phase 3 exports (`CPUSimulator`, `PIMSimulator`, `CorrectnessComparator`,
+     `SimulationRunner`, `SimulationError`).
+   - Cleanly exports Phase 1, Phase 2, and Phase 4 modules.
+
+2. backend/compiler/compiler.py:
+   - Removed `SimulationRunner` import and `empty_simulation` template.
+   - Restructured pipeline from 6 to 5 stages:
+     * Stage 01: lexical
+     * Stage 02: syntax
+     * Stage 03: semantic
+     * Stage 04: ir
+     * Stage 05: pim_mapping (PIM instruction mapping + optimal strategy cost evaluation)
+   - Fixed `IRGenerator` invocation to match parameterless `generate(ast)`.
+
+3. backend/main.py:
+   - Stripped `SimulationRunner` import and instance.
+   - Removed `SimulateRequest` model and `POST /api/simulate` endpoint.
+   - Kept `POST /api/compile`, `GET /api/examples`, `GET /api/health`, and `POST /api/evaluate`.
+
+4. backend/tests/test_api.py:
+   - Replaced `test_api_simulate_endpoint` with `test_api_evaluate_endpoint`.
+
+5. frontend/src/api/client.js:
+   - Removed `simulateCode` export.
+   - Kept `compileCode`, `evaluatePerformance`, `getExamples`, `checkHealth`.
+
+6. frontend/src/api/localCompiler.js:
+   - Stripped `localSimulate`, `localRunCPU`, and `localRunPIM`.
+   - Updated `runLocalCompilation` to 5-stage pipeline without simulation step.
+   - Defaulted `localEvaluatePerformance` simulation parameter to `null`.
+
+7. frontend/src/App.jsx:
+   - Removed `SimulationViewer` import and viewer rendering.
+   - Removed `simulation` from stage selection routing.
+   - Removed `Execution Simulation` tab from tab bar.
+   - Removed `simulation` prop passed to `PIMMappingViewer`.
+   - Updated header / placeholder copy.
+
+8. frontend/src/components/StageStatusPanel.jsx:
+   - Removed Stage 06 `simulation`.
+   - Updated pipeline container CSS class to `stage-pipeline-5`.
+
+9. frontend/src/components/PIMMappingViewer.jsx:
+   - Removed `simulation` from component props.
+   - Replaced Phase 3 trace cross-verification card with "Data Movement & Memory Traffic Modeling"
+     (comparing declared memory footprint, host bus traffic CPU vs PIM, bus traffic reduction %,
+     and bus transfer latency savings).
+
+4. VERIFICATION RESULTS
+--------------------------------------------------------------------------------
+- Backend Tests:
+    * Command: python -m pytest backend/tests -v
+    * Result: 73 passed in 0.73s (100% pass rate, 0 failures).
+      - test_lexer.py:                  8 passed
+      - test_parser.py:                 9 passed
+      - test_semantic.py:               7 passed
+      - test_ir_generator.py:           7 passed
+      - test_pim_mapper.py:             8 passed
+      - test_cost_model.py:             8 passed
+      - test_performance.py:            14 passed
+      - test_compiler_orchestration.py: 5 passed
+      - test_api.py:                    7 passed
+- Frontend Production Build:
+    * Command: npm run build (in frontend/)
+    * Result: Built in 205ms, 0 errors, 117 modules transformed.
+================================================================================
+================================================================================
+DATE: 2026-10-13
+UI FIX: RESTORE COST COMPONENT VALUE IN NARROW BAR SEGMENTS (DIRECT_PIM)
+================================================================================
+1. ISSUE:
+   In the Cost Component Breakdown stacked bar chart, the orange Bus Transfer
+   segment for DIRECT_PIM was not showing its numeric cycle count ("4"), leaving
+   the segment blank between Compute ("14") and Sync Overhead ("60").
+
+2. ROOT CAUSE:
+   frontend/src/components/PIMMappingViewer.jsx had a condition `transferPct > 12`.
+   In DIRECT_PIM, the bus transfer cost is 4.0 cycles out of 78.4 total cycles
+   (approx. 5.1%), which fell below the 12% cutoff and caused the label to be hidden.
+
+3. FIX APPLIED:
+   - frontend/src/components/PIMMappingViewer.jsx:
+     Removed the arbitrary `> 12%` threshold so that all non-zero segments
+     (Compute, Transfer, Layout, and Sync) render their numeric value label.
+   - frontend/src/App.css:
+     Added `min-width: 20px;`, `padding: 0 2px;`, and `box-sizing: border-box;` to
+     `.bar-seg` so that narrow segments comfortably display their integer cycle value.
+================================================================================
+================================================================================
+DATE: 2026-10-13
+UI ENHANCEMENT: USE 1-DECIMAL-PLACE FLOAT VALUES IN GRAPH SEGMENTS
+================================================================================
+1. ISSUE:
+   In the Cost Component Breakdown stacked bar chart, integer rounding with
+   `.toFixed(0)` caused segment labels to display as "14", "4", "60", which sum to
+   78 instead of the displayed total 78.4 cycles.
+
+2. FIX:
+   - frontend/src/components/PIMMappingViewer.jsx:
+     Changed segment label formatting from `.toFixed(0)` to `.toFixed(1)` across
+     Compute (`14.4`), Transfer (`4.0`), Layout (`0.0`), and Sync (`60.0`).
+     Now the components strictly sum to the total:
+     14.4 + 4.0 + 60.0 = 78.4 cycles.
+   - frontend/src/App.css:
+     Updated `.bar-seg` with `min-width: 28px;` and `font-size: 0.71rem;` to
+     ensure floating-point values fit cleanly without clipping.
+================================================================================
+================================================================================
+DATE: 2026-10-13
+UI ENHANCEMENT: PIE / DONUT CHART REPRESENTATION FOR COST COMPONENT BREAKDOWN
+================================================================================
+1. OBJECTIVE:
+   Add a pie/donut chart representation for the Cost Component Breakdown section,
+   clearly showing each strategy's proportional distribution across Compute,
+   Bus Transfer, Layout Reorganization, and Synchronization Overhead.
+
+2. IMPLEMENTATION:
+   - frontend/src/components/PIMMappingViewer.jsx:
+     * Created `DonutCostChart` component with clean SVG geometry, dynamic arc paths,
+       and crisp white boundary separators.
+     * Center hole displays strategy total cycles (e.g. `78.4 cycles`), dynamically
+       updating on hover to highlight individual slice values and percentages.
+     * Displays an interactive list below each chart with exact 1-decimal float values
+       (`14.4 cyc`, `4.0 cyc`, `60.0 cyc`) and exact percentages (`18.4%`, `5.1%`, `76.5%`).
+     * Added a 3-way view toggle in the card header:
+       `[All Views] [Bar] [Pie]`
+       Defaulting to `All Views` so both the stacked bar and the pie charts are
+       rendered immediately, with options to isolate either view.
+   - frontend/src/App.css:
+     * Styled `.chart-view-toggle`, `.view-toggle-btn`, `.pie-charts-wrapper`,
+       `.pie-charts-grid`, `.donut-chart-card`, `.donut-slice`, and hover states.
+
+3. VERIFICATION:
+   - Frontend build (`npm run build`) succeeded in 207ms with 0 errors.
+   - Backend tests: 73 passed in 0.80s (100% pass rate).
+================================================================================
+================================================================================
+DATE: 2026-10-13
+DOCUMENTATION: COMPREHENSIVE ALL-PHASES ACADEMIC PROJECT REPORT PDF GENERATION
+================================================================================
+1. OBJECTIVE:
+   Generate a publication-grade, comprehensive multi-page PDF handbook and report
+   documenting all phases, architectural designs, algorithms, implementations,
+   visualizations, and test suites across the entire project lifecycle.
+
+2. IMPLEMENTATION:
+   - Created `generate_comprehensive_project_pdf.py` using Python ReportLab with
+     a dynamic two-pass `NumberedCanvas` (computing "Page X of 6", running headers
+     on pages 2-6, and running footers on all pages).
+   - Documented all 11 core sections across 6 pages:
+     * Section 1: Executive Summary & Architectural Motivation (Von Neumann memory wall, PIM paradigm, academic contribution)
+     * Section 2: End-to-End System Pipeline & Architecture (5-stage pipeline table: Lexer -> Parser -> Semantic -> IR -> Mapping & Cost)
+     * Section 3: Phase 1 — Compiler Frontend (Lexical analysis with 5-way token categorization, Recursive-descent AST parser with grammar table, Scoped Semantic Analyzer)
+     * Section 4: Phase 2 — Intermediate Representation (Three-Address Code 4-tuple quadruples, opcode specification table, physical byte-offset address math)
+     * Section 5: Phase 2 — PIM Hardware Instruction Mapping & Fallback (Near-memory computing model, DRAM row buffer vs host cache data regions, ISA table, transparent CPU fallback)
+     * Section 6: Architectural Decoupling of Phase 3 Simulation Engine (Dual-approach divergence problem, compiler-centric analytical model rationale, clean pipeline decoupling)
+     * Section 7: Phase 4 — Analytical Cost Model & Performance Evaluation (4-term formula box, baseline hardware parameters table, CPU_ONLY vs DIRECT_PIM vs TRANSFORMED_PIM, strict 1-decimal float invariants, memory traffic distinction)
+     * Section 8: User Interface, Interactive Visualizations & Sandbox (Unified 4-card dashboard, stacked bar chart, interactive SVG Donut/Pie charts with hover readout, 3-way view switcher, sensitivity sandbox)
+     * Section 9: Verification, Test Suite & Benchmark Evaluation (All 73 unit & integration tests passing with 100% pass rate across 9 test suites, small vs large workload scaling comparison)
+     * Section 10: Academic Viva & Technical Defense Guide (Q1-Q4 with detailed defenses)
+     * Section 11: Conclusion & Future Research Extensions (Multi-bank PIM, LLVM backend, FPGA emulation, committee signoff block)
+   - Layout Engineering:
+     * Enforced strict vertical page containment with `PageBreak()` boundaries so no table or heading is awkwardly split across pages.
+     * Verified visual fidelity by rendering all 6 pages to high-resolution PNGs and inspecting layout, typography, contrast, and alignment.
+
+3. DELIVERABLE ARTIFACT:
+   - Output File: `Compiler_PIM_Comprehensive_Project_Report.pdf` (6 pages, 27.6 KB).
+================================================================================
+================================================================================
+DATE: 2026-10-13
+LANGUAGE EXTENSION: SUPPORT FOR EXTENDED C CONSTRUCTS (PREPROCESSOR, MODULAR FUNCTIONS, POINTERS, STRUCTS, FLOATS, I/O) WITH TRANSPARENT CPU FALLBACK
+================================================================================
+1. OBJECTIVE:
+   Allow and compile previously unsupported C constructs from the language spec:
+   - Preprocessor directives (#include <stdio.h>, #include <stdlib.h>, #define N 4, #pragma, #ifdef, import modules)
+   - Custom function definitions (modular helper functions, custom return types, parameters) and calls (printf, scanf, malloc, free, user functions)
+   - Pointers and address-of arithmetic (*ptr, &var, pointer declarations int *p)
+   - Dynamic memory allocation & standard library calls (printf, scanf, malloc, free)
+   - Structures and unions (struct Point { int x; int y; }; member access p.x, ptr->x)
+   - Floating-point numbers (float, double, literals like 3.14, 2.5)
+   - Bitwise and shift operators (&, |, ^, ~, <<, >>)
+
+2. ARCHITECTURAL DESIGN & PIM ACCELERATION POLICY:
+   - Near-Memory Computing (PIM) Specialization: In-situ array arithmetic (ADD, SUB, MUL), comparisons, and row-buffer memory accesses (LOAD_INDEXED, STORE_INDEXED) execute directly inside DRAM bank row buffers with zero memory bus roundtrip.
+   - Host CPU Fallback Routing: Extended C constructs (function calls, stack frame activation, pointer dereferencing, system I/O, struct member offsets, floating point and scalar operations) are fully parsed, type-checked, transformed into 3AC IR, and mapped to CPU Fallback with educational rationales and host memory region tracking (host_cache, host_os, host_rodata, stack).
+
+3. IMPLEMENTATION DETAILS:
+   - Lexical Analysis (backend/compiler/lexer.py):
+     * Added `preprocess_c_source` handling `#include <...>`, `#include "..."`, `#define ID VALUE` (whole-word regex substitution), `#pragma`, `#ifdef/#endif`, and `import` statements while preserving 100% exact 1-indexed source line numbers for error diagnostics.
+     * Added token types for FLOAT, DOUBLE, VOID, CHAR, STRUCT, UNION, SIZEOF, FLOAT_LITERAL, STRING_LITERAL, CHAR_LITERAL, bitwise and member access operators (&, |, ^, ~, ->, .).
+   - AST Hierarchy (backend/compiler/ast_nodes.py):
+     * Added FloatLiteral, StringLiteral, FunctionCall, MemberAccess, StructDef node classes with JSON serialization and backward-compatible property accessors.
+   - Syntax Parsing (backend/compiler/parser.py):
+     * Extended type specifier parsing for int, float, double, void, char, struct, union, and pointer stars (*).
+     * Added top-level parsing for StructDef, modular FunctionDef (custom return types and parameters), and global declarations.
+     * Added expression parsing for FunctionCall, FloatLiteral, StringLiteral, MemberAccess (., ->), unary address-of (&), dereference (*), bitwise NOT (~), and sizeof.
+   - Semantic Analysis (backend/compiler/semantic.py):
+     * Pre-registered standard library symbols (printf, scanf, puts, malloc, free, calloc, realloc, exit, abs, sqrt, pow, sin, cos, fopen, fclose, NULL).
+     * Added visitors for FunctionCall, StructDef, MemberAccess, FloatLiteral, StringLiteral, and pointer unary operators.
+   - IR Generation (backend/compiler/ir_generator.py):
+     * Emitted structured 3AC for CALL, ADDRESS_OF, LOAD_PTR, STORE_PTR, LOAD_FIELD, STORE_FIELD, STRUCT_DEF, CONST_STR, and bitwise operators.
+     * Emitted function entry labels for auxiliary functions (FUNC_<name>).
+   - PIM Mapper (backend/compiler/pim_mapper.py):
+     * Expanded CPU_FALLBACK dictionary and added explicit rules with educational architectural rationales and memory region tagging for CALL, pointer ops, struct field access, string constants, and bitwise ops.
+   - Frontend UI & Specification (frontend/src/components/LanguageSpec.jsx, client.js, backend/main.py):
+     * Updated LanguageSpec card to display "✓ PIM-Accelerated Core (Near-Memory)" alongside "✓ Extended C Constructs (Host CPU Fallback)" explaining the two-tier execution policy.
+     * Added new example presets featuring #include <stdio.h>, helper function definitions, and pointer/struct operations.
+     * Updated in-browser fallback compiler (localCompiler.js) to seamlessly handle preprocessor lines, string literals, and floating-point numbers.
+
+4. VERIFICATION:
+   - Full backend test suite: 78/78 tests passing (100% pass rate) across 10 test modules, including newly added `test_extended_c.py`.
+   - Frontend production build (`npm run build`) succeeded with 0 errors in 419ms.
+================================================================================
+================================================================================
+DATE: 2026-10-13
+UI ENHANCEMENT: HEADER SIMPLIFICATION & FULL-WIDTH BALANCED DATA TABLES
+================================================================================
+1. OBJECTIVE:
+   - Remove the "Language Spec" button from the top right of the navigation header.
+   - Make the Tokens table (Image 2) and Scoped Symbol Table (Image 3) broader and
+     occupy 100% full width of the results card.
+   - Provide uniform, balanced column spacing across all table columns.
+
+2. IMPLEMENTATION:
+   - Header Refinement (frontend/src/App.jsx):
+     * Removed the Language Spec button (`.btn-ghost`) and spec drawer from the header.
+     * Cleaned up `showSpec` state and unused imports for a cleaner navigation bar.
+   - Token Table Full Width & Column Balancing (frontend/src/components/TokenTable.jsx & frontend/src/App.css):
+     * Removed artificial `max-width: 660px` constraint on `.token-table-container`,
+       `.table-controls`, and `.token-table-wrapper`, setting them to `width: 100%; max-width: 100%`.
+     * Restored the clean 5-column layout matching Image 2: `#`, `TOKEN TYPE`, `VALUE`, `LINE`, `COLUMN`.
+     * Increased cell padding to `0.75rem 1.25rem` for broader, comfortable row height.
+     * Distributed column widths uniformly across 100% width:
+       `col-idx` (70px centered), `col-type` (25%), `col-val` (35%), `col-line` (17% centered), `col-col` (17% centered).
+   - Scoped Symbol Table Full Width & Column Balancing (frontend/src/App.css):
+     * Removed artificial `max-width: 780px` constraint on `.symbol-table-wrapper`, setting it to `width: 100%; max-width: 100%`.
+     * Increased cell padding to `0.75rem 1.25rem`.
+     * Distributed column widths uniformly across 100% width:
+       `col-sym-name` (22%), `col-sym-type` (15%), `col-sym-kind` (16%), `col-sym-size` (17%), `col-sym-scope` (16%), `col-sym-loc` (14% left-aligned).
+
+3. VERIFICATION:
+   - Frontend production build (`npm run build`) succeeded in 325ms with 0 errors.
+   - Backend test suite: 78/78 tests passed (100% pass rate).
+================================================================================

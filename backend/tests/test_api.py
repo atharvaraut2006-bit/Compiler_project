@@ -79,7 +79,7 @@ def test_api_compile_empty_code():
     assert data["stages"]["lexical"]["status"] == "error"
 
 
-def test_api_simulate_endpoint():
+def test_api_evaluate_endpoint():
     code = """int main() {
     int arr[4] = {10, 20, 30, 40};
     int sum = 0;
@@ -88,13 +88,14 @@ def test_api_simulate_endpoint():
     }
     return sum;
 }"""
-    response = client.post("/api/simulate", json={"source_code": code})
+    response = client.post("/api/evaluate", json={"source_code": code})
     assert response.status_code == 200
     data = response.json()
-    assert "cpu" in data
-    assert "pim" in data
-    assert "comparison" in data
-    assert data["comparison"]["verdict"] == "PASS"
-    assert data["cpu"]["return_value"] == 100
-    assert data["pim"]["return_value"] == 100
+    assert "selected_strategy" in data
+    assert "selected_cost" in data
+    assert "baseline_cpu_cost" in data
+    assert "strategies" in data
+    assert len(data["strategies"]) >= 2
+    assert "transfer_metrics" in data
+
 

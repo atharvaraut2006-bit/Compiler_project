@@ -1,8 +1,8 @@
 """
 Compiler Orchestration Module.
 Executes Lexer -> Parser -> AST Generation -> Semantic Analysis ->
-IR Generation -> PIM Instruction Mapping in strict sequence
-and returns structured compilation results.
+IR Generation -> PIM Instruction Mapping & Performance Cost Analysis
+in strict sequence and returns structured compilation results.
 """
 from typing import Dict, Any, List, Optional
 from .lexer import Lexer, LexerError
@@ -10,7 +10,7 @@ from .parser import Parser, ParserError
 from .semantic import SemanticAnalyzer, SemanticError
 from .ir_generator import IRGenerator
 from .pim_mapper import PIMMapper
-from .simulation_runner import SimulationRunner
+from .performance_evaluator import PerformanceEvaluator
 
 
 class Compiler:
@@ -18,11 +18,13 @@ class Compiler:
     Main compiler orchestrator for the C front end, IR generator, and PIM instruction mapper.
     """
     SUPPORTED_SUBSET = {
-        "types": ["int", "int arrays"],
-        "operators": ["+", "-", "*", "/", "%", "=", "+=", "-=", "*=", "/=", "<", "<=", ">", ">=", "==", "!=", "&&", "||", "!", "++", "--"],
+        "types": ["int", "float", "double", "char", "void", "struct", "pointers (*)", "arrays (1D/2D)"],
+        "operators": ["+", "-", "*", "/", "%", "=", "+=", "-=", "*=", "/=", "<", "<=", ">", ">=", "==", "!=", "&&", "||", "!", "++", "--", "&", "|", "^", "~", "->", "."],
         "control_flow": ["for loops", "while loops", "if/else conditions", "return"],
-        "program_structure": ["int main() { ... } function definitions", "global/top-level statements", "blocks { ... }"],
-        "builtins": ["print(expr);"]
+        "program_structure": ["Modular functions (any return type & parameters)", "int main()", "struct definitions", "blocks { ... }"],
+        "preprocessor": ["#include <stdio.h>, <stdlib.h>, etc.", "#define macros", "import modules", "#pragma", "#ifdef/#endif"],
+        "builtins": ["printf()", "scanf()", "malloc()", "free()", "print(expr)"],
+        "acceleration_model": "PIM row-buffer execution for array arithmetic & comparisons; Host CPU fallback for functions, pointers, I/O & structs"
     }
 
     def compile(self, source_code: str) -> Dict[str, Any]:
@@ -31,12 +33,18 @@ class Compiler:
         """
         empty_ir = {"instructions": [], "formatted": "", "instruction_count": 0}
         empty_mapping = {"instructions": [], "pim_count": 0, "cpu_count": 0, "unsupported_count": 0, "total_instructions": 0, "summary": {"total": 0, "pim_allocated": 0, "cpu_fallback": 0}}
-        empty_simulation = {
-            "cpu": {"status": "SKIPPED", "return_value": None, "final_variables": {}, "final_arrays": {}, "output": [], "execution_trace": [], "total_steps": 0},
-            "pim": {"status": "SKIPPED", "return_value": None, "final_variables": {}, "final_arrays": {}, "output": [], "execution_trace": [], "total_steps": 0, "pim_steps": 0, "cpu_steps": 0},
-            "comparison": {"verdict": "SKIPPED", "is_match": False, "status": "SKIPPED", "reason": "Simulation skipped.", "discrepancies": []}
+        empty_performance = {
+            "selected_strategy": "SKIPPED",
+            "selected_cost": None,
+            "baseline_cpu_cost": None,
+            "speedup_estimate": 1.0,
+            "strategies": [],
+            "transfer_metrics": {},
+            "execution_stats": {"dynamic_available": False, "dynamic": {}, "static": {}},
+            "cost_breakdown": []
         }
 
+        # Validation: Check empty input
         if not source_code or not source_code.strip():
             return {
                 "success": False,
@@ -46,16 +54,15 @@ class Compiler:
                     "syntax": {"status": "skipped", "message": "Skipped due to empty input."},
                     "semantic": {"status": "skipped", "message": "Skipped due to empty input."},
                     "ir": {"status": "skipped", "message": "Skipped due to empty input."},
-                    "pim_mapping": {"status": "skipped", "message": "Skipped due to empty input."},
-                    "simulation": {"status": "skipped", "message": "Skipped due to empty input."}
+                    "pim_mapping": {"status": "skipped", "message": "Skipped due to empty input."}
                 },
                 "tokens": [],
                 "ast": None,
                 "symbol_table": {},
-                "diagnostics": [{"severity": "error", "message": "Source code cannot be empty.", "line": 1, "column": 1}],
+                "diagnostics": [{"severity": "error", "message": "Source code is empty.", "line": 1, "column": 1}],
                 "ir": empty_ir,
                 "mapping": empty_mapping,
-                "simulation": empty_simulation,
+                "performance": empty_performance,
                 "supported_language": self.SUPPORTED_SUBSET
             }
 
@@ -78,8 +85,7 @@ class Compiler:
                     "syntax": {"status": "skipped", "message": "Skipped due to lexical error."},
                     "semantic": {"status": "skipped", "message": "Skipped due to lexical error."},
                     "ir": {"status": "skipped", "message": "Skipped due to lexical error."},
-                    "pim_mapping": {"status": "skipped", "message": "Skipped due to lexical error."},
-                    "simulation": {"status": "skipped", "message": "Skipped due to lexical error."}
+                    "pim_mapping": {"status": "skipped", "message": "Skipped due to lexical error."}
                 },
                 "tokens": [],
                 "ast": None,
@@ -87,7 +93,7 @@ class Compiler:
                 "diagnostics": [{"severity": "error", "message": e.message, "line": e.line, "column": e.column}],
                 "ir": empty_ir,
                 "mapping": empty_mapping,
-                "simulation": empty_simulation,
+                "performance": empty_performance,
                 "supported_language": self.SUPPORTED_SUBSET
             }
 
@@ -109,8 +115,7 @@ class Compiler:
                     "syntax": {"status": "error", "message": str(e)},
                     "semantic": {"status": "skipped", "message": "Skipped due to syntax error."},
                     "ir": {"status": "skipped", "message": "Skipped due to syntax error."},
-                    "pim_mapping": {"status": "skipped", "message": "Skipped due to syntax error."},
-                    "simulation": {"status": "skipped", "message": "Skipped due to syntax error."}
+                    "pim_mapping": {"status": "skipped", "message": "Skipped due to syntax error."}
                 },
                 "tokens": token_dicts,
                 "ast": None,
@@ -118,7 +123,7 @@ class Compiler:
                 "diagnostics": [{"severity": "error", "message": e.message, "line": e.line, "column": e.column}],
                 "ir": empty_ir,
                 "mapping": empty_mapping,
-                "simulation": empty_simulation,
+                "performance": empty_performance,
                 "supported_language": self.SUPPORTED_SUBSET
             }
 
@@ -136,8 +141,7 @@ class Compiler:
                     "syntax": stage_syntax,
                     "semantic": {"status": "error", "message": first_err},
                     "ir": {"status": "skipped", "message": "Skipped due to semantic error."},
-                    "pim_mapping": {"status": "skipped", "message": "Skipped due to semantic error."},
-                    "simulation": {"status": "skipped", "message": "Skipped due to semantic error."}
+                    "pim_mapping": {"status": "skipped", "message": "Skipped due to semantic error."}
                 },
                 "tokens": token_dicts,
                 "ast": ast_dict,
@@ -145,7 +149,7 @@ class Compiler:
                 "diagnostics": semantic_res["diagnostics"],
                 "ir": empty_ir,
                 "mapping": empty_mapping,
-                "simulation": empty_simulation,
+                "performance": empty_performance,
                 "supported_language": self.SUPPORTED_SUBSET
             }
 
@@ -171,8 +175,7 @@ class Compiler:
                     "syntax": stage_syntax,
                     "semantic": stage_semantic,
                     "ir": {"status": "error", "message": str(e)},
-                    "pim_mapping": {"status": "skipped", "message": "Skipped due to IR failure."},
-                    "simulation": {"status": "skipped", "message": "Skipped due to IR failure."}
+                    "pim_mapping": {"status": "skipped", "message": "Skipped due to IR generation failure."}
                 },
                 "tokens": token_dicts,
                 "ast": ast_dict,
@@ -180,17 +183,24 @@ class Compiler:
                 "diagnostics": semantic_res["diagnostics"] + [{"severity": "error", "message": f"IR Generation failed: {str(e)}", "line": 1, "column": 1}],
                 "ir": empty_ir,
                 "mapping": empty_mapping,
-                "simulation": empty_simulation,
+                "performance": empty_performance,
                 "supported_language": self.SUPPORTED_SUBSET
             }
 
-        # Stage 5: PIM Eligibility Analysis & Instruction Mapping
+        # Stage 5: PIM Instruction Mapping & Performance Cost Analysis
         try:
-            pim_mapper = PIMMapper()
-            mapping_res = pim_mapper.map_instructions(ir_res["instructions"], ast=ast)
+            mapper = PIMMapper()
+            mapping_res = mapper.map_instructions(ir_res["instructions"])
+
+            evaluator = PerformanceEvaluator()
+            perf_res = evaluator.evaluate(
+                ir_instructions=ir_res["instructions"],
+                ast=ast
+            )
+
             stage_pim = {
                 "status": "success",
-                "message": f"Mapped {mapping_res['pim_count']} PIM / {mapping_res['cpu_count']} CPU instructions. Optimal strategy: {mapping_res.get('optimization', {}).get('selected_strategy', 'N/A')}."
+                "message": f"Mapped {mapping_res['pim_count']} PIM / {mapping_res['cpu_count']} CPU instructions. Optimal strategy: {perf_res['selected_strategy']} ({perf_res['speedup_estimate']}x speedup)."
             }
         except Exception as e:
             return {
@@ -201,8 +211,7 @@ class Compiler:
                     "syntax": stage_syntax,
                     "semantic": stage_semantic,
                     "ir": stage_ir,
-                    "pim_mapping": {"status": "error", "message": str(e)},
-                    "simulation": {"status": "skipped", "message": "Skipped due to PIM mapping failure."}
+                    "pim_mapping": {"status": "error", "message": str(e)}
                 },
                 "tokens": token_dicts,
                 "ast": ast_dict,
@@ -211,23 +220,8 @@ class Compiler:
                 "ir": ir_res,
                 "mapping": empty_mapping,
                 "optimization": {},
-                "simulation": empty_simulation,
+                "performance": empty_performance,
                 "supported_language": self.SUPPORTED_SUBSET
-            }
-
-        # Stage 6: Dual CPU / PIM Execution Simulation
-        try:
-            runner = SimulationRunner()
-            sim_res = runner.run(ir_res["instructions"], mapping_res["instructions"])
-            stage_sim = {
-                "status": "success" if sim_res["comparison"]["status"] != "ERROR" else "error",
-                "message": f"Simulation {sim_res['comparison']['verdict']}. CPU: {sim_res['cpu']['total_steps']} steps, PIM: {sim_res['pim']['total_steps']} steps ({sim_res['pim']['pim_steps']} in-situ)."
-            }
-        except Exception as e:
-            sim_res = empty_simulation
-            stage_sim = {
-                "status": "error",
-                "message": f"Simulation failed: {str(e)}"
             }
 
         # Complete Pipeline Succeeded!
@@ -239,8 +233,7 @@ class Compiler:
                 "syntax": stage_syntax,
                 "semantic": stage_semantic,
                 "ir": stage_ir,
-                "pim_mapping": stage_pim,
-                "simulation": stage_sim
+                "pim_mapping": stage_pim
             },
             "tokens": token_dicts,
             "ast": ast_dict,
@@ -249,6 +242,6 @@ class Compiler:
             "ir": ir_res,
             "mapping": mapping_res,
             "optimization": mapping_res.get("optimization", {}),
-            "simulation": sim_res,
+            "performance": perf_res,
             "supported_language": self.SUPPORTED_SUBSET
         }

@@ -1,14 +1,16 @@
 """
-Semantic Analyzer for Phase 1 of C Compiler Front End.
+Semantic Analyzer for C Compiler Front End with Extended C Support.
 Maintains scoped symbol tables, validates types and declarations,
 and reports clear diagnostics (errors and warnings).
+Includes pre-registered C standard library functions (stdio, stdlib, math).
 """
 from typing import Dict, List, Optional, Any
 from .ast_nodes import (
     ASTNode, Program, FunctionDef, VarDecl, ArrayDecl, Block,
     Assignment, CompoundAssignment, ForLoop, WhileLoop, IfStatement,
     ReturnStatement, PrintStatement, ExprStatement, BinaryOp, UnaryOp,
-    ArrayAccess, Identifier, IntLiteral
+    ArrayAccess, Identifier, IntLiteral, FloatLiteral, StringLiteral,
+    FunctionCall, MemberAccess, StructDef
 )
 
 
@@ -98,6 +100,28 @@ class SemanticError(Exception):
         self.column = column
 
 
+# Standard library prototypes preloaded into global scope
+STANDARD_BUILTINS: Dict[str, Dict[str, Any]] = {
+    "printf": {"type_name": "function(string, ...)->int", "size": 4},
+    "scanf": {"type_name": "function(string, ...)->int", "size": 4},
+    "puts": {"type_name": "function(string)->int", "size": 4},
+    "malloc": {"type_name": "function(int)->void*", "size": 8},
+    "free": {"type_name": "function(void*)->void", "size": 4},
+    "calloc": {"type_name": "function(int, int)->void*", "size": 8},
+    "realloc": {"type_name": "function(void*, int)->void*", "size": 8},
+    "exit": {"type_name": "function(int)->void", "size": 4},
+    "abs": {"type_name": "function(int)->int", "size": 4},
+    "sqrt": {"type_name": "function(double)->double", "size": 8},
+    "pow": {"type_name": "function(double, double)->double", "size": 8},
+    "sin": {"type_name": "function(double)->double", "size": 8},
+    "cos": {"type_name": "function(double)->double", "size": 8},
+    "fopen": {"type_name": "function(string, string)->void*", "size": 8},
+    "fclose": {"type_name": "function(void*)->int", "size": 4},
+    "print": {"type_name": "function(any)->void", "size": 4},
+    "NULL": {"type_name": "int", "size": 4}
+}
+
+
 class SemanticAnalyzer:
     """
     Performs type checking, symbol resolution, and semantic validation.
@@ -107,6 +131,21 @@ class SemanticAnalyzer:
         self.current_scope = self.global_scope
         self.diagnostics: List[Diagnostic] = []
         self.all_symbols: Dict[str, Dict[str, Any]] = {}
+        self._init_builtins()
+
+    def _init_builtins(self):
+        """Populates global scope with standard C library symbols."""
+        for name, info in STANDARD_BUILTINS.items():
+            sym = Symbol(
+                name=name,
+                type_name=info["type_name"],
+                is_array=False,
+                size=info.get("size", 4),
+                line=1,
+                column=1,
+                scope_level=0
+            )
+            self.global_scope.define(sym)
 
     def _error(self, message: str, line: int, column: int):
         self.diagnostics.append(Diagnostic("error", message, line, column))
@@ -126,6 +165,7 @@ class SemanticAnalyzer:
         self.all_symbols.clear()
         self.global_scope = Scope(level=0)
         self.current_scope = self.global_scope
+        self._init_builtins()
 
         self._visit(ast)
 
@@ -183,7 +223,7 @@ class SemanticAnalyzer:
             p_sym = Symbol(
                 name=param["name"],
                 type_name=param["type"],
-                is_array=False,
+                is_array="[]" in param["type"],
                 size=4,
                 line=node.line,
                 column=node.column
@@ -205,7 +245,7 @@ class SemanticAnalyzer:
             name=node.name,
             type_name=node.type_name,
             is_array=False,
-            size=4,
+            size=4 if "float" in node.type_name or "int" in node.type_name else 8,
             line=node.line,
             column=node.column
         )
@@ -243,6 +283,15 @@ class SemanticAnalyzer:
                 )
             for init_expr in node.initializers:
                 self._visit(init_expr)
+
+    def _visit_StructDef(self, node: StructDef):
+        sym = Symbol(
+            name=node.name,
+            type_name=f"struct {node.name}" if not node.is_union else f"union {node.name}",
+            line=node.line,
+            column=node.column
+        )
+        self.all_symbols[node.name] = sym.to_dict()
 
     def _visit_Block(self, node: Block):
         self._enter_scope()
@@ -301,15 +350,43 @@ class SemanticAnalyzer:
         self._visit(node.left)
         self._visit(node.right)
 
-        # Check division by zero for constant literals
-        if node.op in ("/", "%") and isinstance(node.right, IntLiteral) and node.right.value == 0:
-            self._error(f"Division by zero detected in expression", node.line, node.column)
+        # Check division by zero for constant literals (int and float)
+        if node.op in ("/", "%"):
+            if isinstance(node.right, IntLiteral) and node.right.value == 0:
+                self._error(f"Division by zero detected in expression", node.line, node.column)
+            elif isinstance(node.right, FloatLiteral) and node.right.value == 0.0:
+                self._error(f"Division by zero detected in expression", node.line, node.column)
 
     def _visit_UnaryOp(self, node: UnaryOp):
-        self._visit(node.operand)
+        if node.op == "&" and isinstance(node.operand, Identifier):
+            sym = self.current_scope.resolve(node.operand.name)
+            if not sym:
+                self._error(f"Undeclared variable '{node.operand.name}' in address-of expression", node.line, node.column)
+        elif node.op == "*" and isinstance(node.operand, Identifier):
+            sym = self.current_scope.resolve(node.operand.name)
+            if not sym:
+                self._error(f"Undeclared pointer variable '{node.operand.name}'", node.line, node.column)
+        else:
+            self._visit(node.operand)
+
+    def _visit_FunctionCall(self, node: FunctionCall):
+        sym = self.current_scope.resolve(node.func_name)
+        if not sym:
+            # Check standard builtins
+            if node.func_name in STANDARD_BUILTINS:
+                pass
+            else:
+                self._error(f"Undeclared function '{node.func_name}'", node.line, node.column)
+        for arg in node.args:
+            self._visit(arg)
+
+    def _visit_MemberAccess(self, node: MemberAccess):
+        self._visit(node.object)
 
     def _visit_ArrayAccess(self, node: ArrayAccess):
-        sym = self.current_scope.resolve(node.array_name)
+        # Clean array base name if 2D compound
+        base_name = node.array_name.split("[")[0].replace("_2d", "")
+        sym = self.current_scope.resolve(base_name)
         if not sym:
             self._error(f"Undeclared array identifier '{node.array_name}'", node.line, node.column)
         elif not sym.is_array:
@@ -328,10 +405,17 @@ class SemanticAnalyzer:
     def _visit_Identifier(self, node: Identifier):
         sym = self.current_scope.resolve(node.name)
         if not sym:
-            self._error(f"Undeclared variable '{node.name}'", node.line, node.column)
+            if node.name not in STANDARD_BUILTINS:
+                self._error(f"Undeclared variable '{node.name}'", node.line, node.column)
         elif sym.is_array:
-            # Array used as raw scalar identifier without index
+            # Array used as raw scalar identifier without index (e.g., passing array to function)
             pass
 
     def _visit_IntLiteral(self, node: IntLiteral):
+        pass
+
+    def _visit_FloatLiteral(self, node: FloatLiteral):
+        pass
+
+    def _visit_StringLiteral(self, node: StringLiteral):
         pass

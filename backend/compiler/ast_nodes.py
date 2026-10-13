@@ -326,3 +326,105 @@ class IntLiteral(ASTNode):
             "line": self.line,
             "column": self.column
         }
+
+
+class FloatLiteral(ASTNode):
+    """Floating-point literal constant node (e.g., 3.14)."""
+    def __init__(self, value: float, line: int = 1, column: int = 1):
+        super().__init__(line, column)
+        self.value = value
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "node_type": "FloatLiteral",
+            "value": self.value,
+            "line": self.line,
+            "column": self.column
+        }
+
+
+class StringLiteral(ASTNode):
+    """String literal constant node (e.g., "Hello %d\n")."""
+    def __init__(self, value: str, line: int = 1, column: int = 1):
+        super().__init__(line, column)
+        self.value = value
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "node_type": "StringLiteral",
+            "value": self.value,
+            "line": self.line,
+            "column": self.column
+        }
+
+
+class FunctionCall(ASTNode):
+    """Function call expression (e.g., printf(...), add(x, y), malloc(100))."""
+    def __init__(self, func_name: str, args: List[ASTNode], line: int = 1, column: int = 1):
+        super().__init__(line, column)
+        self.func_name = func_name
+        self.args = args
+
+    @property
+    def name(self) -> str:
+        return self.func_name
+
+    @property
+    def arguments(self) -> List[ASTNode]:
+        return self.args
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "node_type": "FunctionCall",
+            "func_name": self.func_name,
+            "args": [arg.to_dict() for arg in self.args],
+            "line": self.line,
+            "column": self.column
+        }
+
+
+class MemberAccess(ASTNode):
+    """Structure member access (e.g., p.x or ptr->x)."""
+    def __init__(self, object_: ASTNode, member: str, is_arrow: bool = False, line: int = 1, column: int = 1):
+        super().__init__(line, column)
+        self.object = object_
+        self.member = member
+        self.is_arrow = is_arrow
+
+    @property
+    def object_expr(self) -> ASTNode:
+        return self.object
+
+    @property
+    def is_pointer(self) -> bool:
+        return self.is_arrow
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "node_type": "MemberAccess",
+            "object": self.object.to_dict(),
+            "member": self.member,
+            "is_arrow": self.is_arrow,
+            "line": self.line,
+            "column": self.column
+        }
+
+
+class StructDef(ASTNode):
+    """Structure or Union definition (e.g., struct Point { int x; int y; };)."""
+    def __init__(self, name: str, members: List[Dict[str, str]], is_union: bool = False, line: int = 1, column: int = 1):
+        super().__init__(line, column)
+        self.name = name
+        self.members = members
+        self.is_union = is_union
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "node_type": "StructDef",
+            "name": self.name,
+            "members": self.members,
+            "is_union": self.is_union,
+            "line": self.line,
+            "column": self.column
+        }
+

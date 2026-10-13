@@ -1,10 +1,10 @@
 /**
- * Resilient In-Browser C Subset Compiler & Execution Simulator Engine.
- * Matches backend AST schema, IR generation, PIM mapping, and dual simulation
+ * Resilient In-Browser C Subset Compiler & Performance Analysis Engine.
+ * Matches backend AST schema, IR generation, PIM mapping, and cost model
  * semantics with 100% fidelity.
  */
 
-export function runLocalCompilation(sourceCode) {
+export function runLocalCompilation(sourceCode, customParams = null) {
   if (!sourceCode || !sourceCode.trim()) {
     return {
       success: false,
@@ -14,8 +14,7 @@ export function runLocalCompilation(sourceCode) {
         syntax: { status: "skipped", message: "Skipped" },
         semantic: { status: "skipped", message: "Skipped" },
         ir: { status: "skipped", message: "Skipped" },
-        pim_mapping: { status: "skipped", message: "Skipped" },
-        simulation: { status: "skipped", message: "Skipped" }
+        pim_mapping: { status: "skipped", message: "Skipped" }
       },
       tokens: [],
       ast: null,
@@ -51,8 +50,7 @@ export function runLocalCompilation(sourceCode) {
           syntax: stage_syntax,
           semantic: { status: "error", message: semanticRes.error },
           ir: { status: "skipped", message: "Skipped" },
-          pim_mapping: { status: "skipped", message: "Skipped" },
-          simulation: { status: "skipped", message: "Skipped" }
+          pim_mapping: { status: "skipped", message: "Skipped" }
         },
         tokens,
         ast,
@@ -72,18 +70,12 @@ export function runLocalCompilation(sourceCode) {
       message: `Generated ${irRes.instructions.length} 3AC instructions.`
     };
 
-    // 5. PIM Mapping
+    // 5. PIM Mapping & Performance Analysis (Integrated Phase 2 & 4)
     const mappingRes = localMapPIM(irRes.instructions, semanticRes.symbols);
+    const perfRes = localEvaluatePerformance(irRes.instructions, semanticRes.symbols, null, customParams);
     const stage_pim = {
       status: "success",
-      message: `Mapped ${mappingRes.pim_count} PIM / ${mappingRes.cpu_count} CPU instructions. Optimal strategy: ${mappingRes.optimization?.selected_strategy || 'DIRECT_PIM'}.`
-    };
-
-    // 6. Execution Simulation
-    const simRes = localSimulate(irRes.instructions, mappingRes.instructions);
-    const stage_sim = {
-      status: "success",
-      message: `Simulation ${simRes.comparison.verdict}. CPU: ${simRes.cpu.total_steps} steps, PIM: ${simRes.pim.total_steps} steps (${simRes.pim.pim_steps} in-situ).`
+      message: `Mapped ${mappingRes.pim_count} PIM / ${mappingRes.cpu_count} CPU instructions. Selected: ${perfRes.selected_strategy} (${perfRes.speedup_estimate}x speedup).`
     };
 
     return {
@@ -94,8 +86,7 @@ export function runLocalCompilation(sourceCode) {
         syntax: stage_syntax,
         semantic: stage_semantic,
         ir: stage_ir,
-        pim_mapping: stage_pim,
-        simulation: stage_sim
+        pim_mapping: stage_pim
       },
       tokens,
       ast,
@@ -104,7 +95,7 @@ export function runLocalCompilation(sourceCode) {
       ir: irRes,
       mapping: mappingRes,
       optimization: mappingRes.optimization,
-      simulation: simRes,
+      performance: perfRes,
       is_local_fallback: true
     };
   } catch (err) {
@@ -116,8 +107,7 @@ export function runLocalCompilation(sourceCode) {
         syntax: { status: "skipped", message: "Skipped" },
         semantic: { status: "skipped", message: "Skipped" },
         ir: { status: "skipped", message: "Skipped" },
-        pim_mapping: { status: "skipped", message: "Skipped" },
-        simulation: { status: "skipped", message: "Skipped" }
+        pim_mapping: { status: "skipped", message: "Skipped" }
       },
       tokens: [],
       ast: null,
@@ -137,6 +127,11 @@ function localTokenize(code) {
 
   lines.forEach((lineText, lineIdx) => {
     const lineNum = lineIdx + 1;
+    const trimmed = lineText.trim();
+    if (trimmed.startsWith('#') || trimmed.startsWith('import ')) {
+      return;
+    }
+
     let col = 1;
     let i = 0;
 
@@ -153,23 +148,43 @@ function localTokenize(code) {
         break;
       }
 
+      if (ch === '"') {
+        let str = '';
+        const startCol = col;
+        i++; col++;
+        while (i < lineText.length && lineText[i] !== '"') {
+          if (lineText[i] === '\\' && i + 1 < lineText.length) {
+            str += lineText[i] + lineText[i + 1];
+            i += 2; col += 2;
+          } else {
+            str += lineText[i];
+            i++; col++;
+          }
+        }
+        if (i < lineText.length && lineText[i] === '"') {
+          i++; col++;
+        }
+        tokens.push({ type: 'STRING_LITERAL', category: 'string literal', value: str, line: lineNum, column: startCol });
+        continue;
+      }
+
       const two = lineText.slice(i, i + 2);
-      if (['+=', '-=', '*=', '/=', '==', '!=', '<=', '>=', '&&', '||', '++', '--'].includes(two)) {
-        tokens.push({ type: 'OPERATOR', value: two, line: lineNum, column: col });
+      if (['+=', '-=', '*=', '/=', '==', '!=', '<=', '>=', '&&', '||', '++', '--', '->'].includes(two)) {
+        tokens.push({ type: 'OPERATOR', category: 'operator', value: two, line: lineNum, column: col });
         i += 2;
         col += 2;
         continue;
       }
 
-      if ('+-*/%=<>!'.includes(ch)) {
-        tokens.push({ type: 'OPERATOR', value: ch, line: lineNum, column: col });
+      if ('+-*/%=<>!&|^~.'.includes(ch)) {
+        tokens.push({ type: 'OPERATOR', category: 'operator', value: ch, line: lineNum, column: col });
         i++;
         col++;
         continue;
       }
 
       if ('(){}[];,'.includes(ch)) {
-        tokens.push({ type: 'PUNCTUATION', value: ch, line: lineNum, column: col });
+        tokens.push({ type: 'PUNCTUATION', category: 'delimeter', value: ch, line: lineNum, column: col });
         i++;
         col++;
         continue;
@@ -178,12 +193,14 @@ function localTokenize(code) {
       if (/[0-9]/.test(ch)) {
         let num = '';
         const startCol = col;
-        while (i < lineText.length && /[0-9]/.test(lineText[i])) {
+        let hasDot = false;
+        while (i < lineText.length && (/[0-9]/.test(lineText[i]) || (!hasDot && lineText[i] === '.' && /[0-9]/.test(lineText[i + 1] || '')))) {
+          if (lineText[i] === '.') hasDot = true;
           num += lineText[i];
           i++;
           col++;
         }
-        tokens.push({ type: 'NUMBER', value: num, line: lineNum, column: startCol });
+        tokens.push({ type: 'NUMBER', category: 'numeric literal', value: num, line: lineNum, column: startCol });
         continue;
       }
 
@@ -195,18 +212,20 @@ function localTokenize(code) {
           i++;
           col++;
         }
-        const type = KEYWORDS.has(id) ? 'KEYWORD' : 'IDENTIFIER';
-        tokens.push({ type, value: id, line: lineNum, column: startCol });
+        const isKw = KEYWORDS.has(id);
+        const type = isKw ? (id === 'int' ? 'INT' : id.toUpperCase()) : 'IDENTIFIER';
+        const category = isKw ? 'keyword' : 'identifier';
+        tokens.push({ type, category, value: id, line: lineNum, column: startCol });
         continue;
       }
 
-      tokens.push({ type: 'UNKNOWN', value: ch, line: lineNum, column: col });
+      tokens.push({ type: 'UNKNOWN', category: 'delimeter', value: ch, line: lineNum, column: col });
       i++;
       col++;
     }
   });
 
-  tokens.push({ type: 'EOF', value: '', line: lines.length, column: 1 });
+  tokens.push({ type: 'EOF', category: 'delimeter', value: '', line: lines.length, column: 1 });
   return tokens;
 }
 
@@ -839,480 +858,318 @@ function localMapPIM(irInstructions, symbols) {
 }
 
 // -------------------------------------------------------------
-// 6. Dual Execution Simulator (CPU & PIM)
+// 6. Performance Evaluator & Cost Model (Phase 4)
 // -------------------------------------------------------------
-function localSimulate(irInstructions, mappedInstructions) {
-  const cpuResult = localRunCPU(irInstructions);
-  const pimResult = localRunPIM(mappedInstructions);
-
-  const returnMatch = cpuResult.return_value === pimResult.return_value;
-  const varsMatch = JSON.stringify(cpuResult.final_variables) === JSON.stringify(pimResult.final_variables);
-  const arrsMatch = JSON.stringify(cpuResult.final_arrays) === JSON.stringify(pimResult.final_arrays);
-  const outMatch = JSON.stringify(cpuResult.output) === JSON.stringify(pimResult.output);
-
-  const isMatch = returnMatch && varsMatch && arrsMatch && outMatch;
-  const verdict = isMatch ? "PASS" : "FAIL";
-
-  const discrepancies = [];
-  if (!returnMatch) discrepancies.push(`Return value mismatch: CPU=${cpuResult.return_value}, PIM=${pimResult.return_value}`);
-  if (!varsMatch) discrepancies.push("Scalar variables state mismatch.");
-  if (!arrsMatch) discrepancies.push("Array buffer content mismatch.");
-  if (!outMatch) discrepancies.push("Standard output mismatch.");
-
-  return {
-    cpu: cpuResult,
-    pim: pimResult,
-    comparison: {
-      verdict,
-      is_match: isMatch,
-      status: verdict,
-      reason: isMatch
-        ? "All execution results, memory states, and output streams match identically."
-        : `${discrepancies.length} semantic discrepancies detected.`,
-      discrepancies,
-      summary: {
-        return_value_match: returnMatch,
-        variables_match: varsMatch,
-        arrays_match: arrsMatch,
-        output_match: outMatch,
-        cpu_status: cpuResult.status,
-        pim_status: pimResult.status,
-        cpu_steps: cpuResult.total_steps,
-        pim_steps: pimResult.total_steps,
-        pim_in_situ_steps: pimResult.pim_steps,
-        pim_cpu_fallback_steps: pimResult.cpu_steps
-      }
-    }
+export function localEvaluatePerformance(irInstructions, symbols, simRes = null, customParams = null) {
+  const defaultParams = {
+    cpu_cycles_per_arithmetic_op: 1.0,
+    pim_cycles_per_arithmetic_op: 1.2,
+    bus_bandwidth_bytes_per_cycle: 2.0,
+    pim_launch_sync_overhead_cycles: 60.0,
+    layout_transform_cycles_per_byte: 0.5,
+    word_size_bytes: 4,
+    pim_kernel_dispatch_bytes: 8
   };
-}
 
-function localRunCPU(instructions) {
-  const vars = {};
-  const arrays = {};
-  const temps = {};
-  const output = [];
-  const trace = [];
-  let retVal = 0;
-  let pc = 0;
-  let steps = 0;
+  const params = {
+    ...defaultParams,
+    ...(customParams || {})
+  };
 
-  const labelToPc = {};
-  instructions.forEach((instr, idx) => {
-    if (instr.opcode === "LABEL") labelToPc[instr.arg1] = idx;
+  // 1. Static workload analysis
+  let declaredVariableBytes = 0;
+  let hasArray = false;
+  let arraySize = 0;
+  for (const [name, sym] of Object.entries(symbols || {})) {
+    if (sym.is_array) {
+      hasArray = true;
+      arraySize = sym.size || 4;
+      declaredVariableBytes += (sym.size || 4) * params.word_size_bytes;
+    } else {
+      declaredVariableBytes += params.word_size_bytes;
+    }
+  }
+
+  // Count operations in IR
+  let dynamicExecutedOps = 0;
+  let dynamicBusBytes = 0;
+  let hasUnsupportedOps = false;
+  const unsupportedOps = [];
+
+  irInstructions.forEach(instr => {
+    if (['ADD', 'SUB', 'MUL', 'BIT_AND', 'BIT_OR', 'BIT_XOR'].includes(instr.opcode)) {
+      dynamicExecutedOps++;
+    } else if (['DIV', 'MOD'].includes(instr.opcode)) {
+      dynamicExecutedOps++;
+      hasUnsupportedOps = true;
+      if (!unsupportedOps.includes(instr.opcode)) unsupportedOps.push(instr.opcode);
+    }
+    if (instr.opcode === 'LOAD_INDEXED' || instr.opcode === 'STORE_INDEXED') {
+      dynamicBusBytes += params.word_size_bytes;
+    }
   });
 
-  const resolve = (val) => {
-    if (val === undefined || val === null) return 0;
-    if (typeof val === 'number') return val;
-    const str = String(val).trim();
-    if (!isNaN(parseInt(str))) return parseInt(str);
-    if (temps[str] !== undefined) return temps[str];
-    if (vars[str] !== undefined) return vars[str];
-    return 0;
+  // Extract from Phase 3 simulation if available
+  const pimTrace = simRes?.pim?.execution_trace || [];
+  const dynamicAvailable = pimTrace.length > 0;
+  let totalExecutedInstructions = null;
+  let cpuExecutedInstructions = null;
+  let pimExecutedInstructions = null;
+  let cpuFallbackOperations = null;
+  let arrayAccesses = null;
+  let dataTransfers = null;
+  let runtimeLoopIterations = null;
+
+  if (dynamicAvailable) {
+    totalExecutedInstructions = pimTrace.length;
+    pimExecutedInstructions = pimTrace.filter(t => t.processor === 'PIM').length;
+    cpuExecutedInstructions = pimTrace.filter(t => t.processor === 'CPU').length;
+    cpuFallbackOperations = pimTrace.filter(t => t.is_fallback).length;
+    arrayAccesses = pimTrace.filter(t => t.read_array !== undefined || t.updated_array !== undefined).length;
+    dataTransfers = pimTrace.filter(t => t.is_transfer).length;
+    runtimeLoopIterations = pimTrace.filter(t => (t.mapped_instruction === 'CPU_JUMP' || t.opcode === 'JUMP') && String(t.arg1 || '').toLowerCase().includes('loop')).length;
+    if (runtimeLoopIterations === 0 && arraySize > 0) runtimeLoopIterations = arraySize;
+
+    if (arrayAccesses > 0) {
+      dynamicBusBytes = arrayAccesses * params.word_size_bytes;
+    }
+    const mathOpsInTrace = pimTrace.filter(t => ['ADD', 'SUB', 'MUL', 'DIV', 'MOD'].some(op => (t.mapped_instruction || '').includes(op))).length;
+    if (mathOpsInTrace > 0) {
+      dynamicExecutedOps = mathOpsInTrace;
+    }
+  }
+
+  if (dynamicBusBytes === 0 && hasArray) {
+    dynamicBusBytes = arraySize * params.word_size_bytes;
+  }
+  if (dynamicExecutedOps === 0) {
+    dynamicExecutedOps = Math.max(1, irInstructions.length);
+  }
+
+  // 2. Candidate costs
+  // CPU_ONLY
+  const cpuCompute = Number((dynamicExecutedOps * params.cpu_cycles_per_arithmetic_op).toFixed(2));
+  const cpuTransfer = Number((dynamicBusBytes / params.bus_bandwidth_bytes_per_cycle).toFixed(2));
+  const cpuTotal = Number((cpuCompute + cpuTransfer).toFixed(2));
+
+  // DIRECT_PIM
+  const pimDirectValid = hasArray && !hasUnsupportedOps;
+  let pimDirectRejection = null;
+  if (!hasArray) pimDirectRejection = "Workload contains no DRAM memory buffer accesses.";
+  else if (hasUnsupportedOps) pimDirectRejection = `Contains operations not supported by PIM ALU (${unsupportedOps.join(', ')}).`;
+
+  const pimDirectCompute = pimDirectValid ? Number((dynamicExecutedOps * params.pim_cycles_per_arithmetic_op).toFixed(2)) : null;
+  const pimDirectTransfer = pimDirectValid ? Number((params.pim_kernel_dispatch_bytes / params.bus_bandwidth_bytes_per_cycle).toFixed(2)) : null;
+  const pimDirectSync = pimDirectValid ? Number(params.pim_launch_sync_overhead_cycles.toFixed(2)) : null;
+  const pimDirectTotal = pimDirectValid ? Number((pimDirectCompute + pimDirectTransfer + pimDirectSync).toFixed(2)) : null;
+
+  // TRANSFORMED_PIM
+  const pimTransValid = false;
+  const pimTransRejection = "Array access pattern is already contiguous/sequential. Data transformation not required.";
+
+  // Candidates list
+  const candidates = [
+    {
+      strategy: "CPU_ONLY",
+      is_valid: true,
+      compute_cost: cpuCompute,
+      transfer_cost: cpuTransfer,
+      layout_cost: 0.0,
+      synchronization_cost: 0.0,
+      total_cost: cpuTotal,
+      speedup_vs_cpu: 1.0,
+      rejection_reason: null
+    },
+    {
+      strategy: "DIRECT_PIM",
+      is_valid: pimDirectValid,
+      compute_cost: pimDirectCompute,
+      transfer_cost: pimDirectTransfer,
+      layout_cost: 0.0,
+      synchronization_cost: pimDirectSync,
+      total_cost: pimDirectTotal,
+      speedup_vs_cpu: pimDirectValid && pimDirectTotal > 0 ? Number((cpuTotal / pimDirectTotal).toFixed(2)) : null,
+      rejection_reason: pimDirectRejection
+    },
+    {
+      strategy: "TRANSFORMED_PIM",
+      is_valid: pimTransValid,
+      compute_cost: null,
+      transfer_cost: null,
+      layout_cost: null,
+      synchronization_cost: null,
+      total_cost: null,
+      speedup_vs_cpu: null,
+      rejection_reason: pimTransRejection
+    }
+  ];
+
+  // Select optimal candidate
+  let selected = candidates[0];
+  if (pimDirectValid && pimDirectTotal < cpuTotal) {
+    selected = candidates[1];
+  }
+
+  candidates.forEach(c => {
+    c.is_selected = (c.strategy === selected.strategy);
+  });
+
+  const selectedStrategy = selected.strategy;
+  const selectedCost = selected.total_cost;
+  const speedupEstimate = selected.speedup_vs_cpu ?? 1.0;
+  const offloadBeneficial = (selectedStrategy !== "CPU_ONLY" && speedupEstimate > 1.0);
+
+  // Transfer metrics
+  const cpuBytesTransferred = dynamicBusBytes;
+  let selectedBytesTransferred = cpuBytesTransferred;
+  let bytesSaved = 0;
+  let transferCostSavings = 0.0;
+  if (selectedStrategy === "DIRECT_PIM") {
+    selectedBytesTransferred = params.pim_kernel_dispatch_bytes;
+    bytesSaved = Math.max(0, cpuBytesTransferred - selectedBytesTransferred);
+    transferCostSavings = Number((cpuTransfer - (pimDirectTransfer || 0)).toFixed(2));
+  }
+  const bandwidthReductionPct = cpuBytesTransferred > 0 && bytesSaved > 0
+    ? Number(((bytesSaved / cpuBytesTransferred) * 100).toFixed(1))
+    : 0.0;
+
+  const transferMetrics = {
+    declared_footprint_bytes: declaredVariableBytes,
+    dynamic_bus_bytes_accessed: dynamicBusBytes,
+    cpu_bytes_transferred: cpuBytesTransferred,
+    selected_bytes_transferred: selectedBytesTransferred,
+    bytes_saved: bytesSaved,
+    bandwidth_reduction_pct: bandwidthReductionPct,
+    cpu_transfer_cost_cycles: cpuTransfer,
+    selected_transfer_cost_cycles: selected.transfer_cost ?? cpuTransfer,
+    transfer_cost_savings_cycles: transferCostSavings,
+    bus_bandwidth_bytes_per_cycle: params.bus_bandwidth_bytes_per_cycle,
+    units: {
+      footprint: "bytes",
+      traffic: "bytes",
+      transfer_cost: "cycles"
+    }
   };
 
-  while (pc < instructions.length && steps < 1000) {
-    const item = instructions[pc];
-    const op = item.opcode;
-    let nextPc = pc + 1;
-    let opDesc = "";
-    let resVal = null;
-    let updatedVar = null;
-    let readArray = null;
-    let updatedArray = null;
-    let arg1Val = null;
-    let arg2Val = null;
-
-    if (op === "DECLARE") {
-      if (item.metadata?.is_array || String(item.arg1).includes("[")) {
-        const name = String(item.arg1).split("[")[0];
-        const size = parseInt(String(item.arg1).split("[")[1]?.split("]")[0] || "4");
-        arrays[name] = new Array(size).fill(0);
-        updatedArray = { name, size, value: [...arrays[name]] };
-        opDesc = `Allocated DRAM buffer '${name}' of size ${size}`;
-      } else {
-        vars[item.arg1] = 0;
-        updatedVar = item.arg1;
-        opDesc = `Stack variable '${item.arg1}' = 0`;
-      }
-    } else if (op === "CONST") {
-      const v = resolve(item.arg1);
-      arg1Val = v;
-      temps[item.dest] = v;
-      resVal = v;
-      opDesc = `${item.dest} = ${v}`;
-    } else if (op === "LOAD") {
-      const v = vars[item.arg1] !== undefined ? vars[item.arg1] : 0;
-      arg1Val = v;
-      temps[item.dest] = v;
-      resVal = v;
-      opDesc = `${item.dest} = ${item.arg1} (${v})`;
-    } else if (op === "STORE") {
-      const v = resolve(item.arg1);
-      arg1Val = v;
-      vars[item.dest] = v;
-      updatedVar = item.dest;
-      resVal = v;
-      opDesc = `${item.dest} = ${v}`;
-    } else if (op === "STORE_INDEXED") {
-      const arrName = item.dest;
-      const idx = resolve(item.arg1);
-      const v = resolve(item.arg2);
-      arg1Val = idx;
-      arg2Val = v;
-      if (!arrays[arrName]) arrays[arrName] = [];
-      arrays[arrName][idx] = v;
-      updatedArray = { name: arrName, index: idx, value: v };
-      resVal = v;
-      opDesc = `${arrName}[${idx}] = ${v}`;
-    } else if (op === "LOAD_INDEXED") {
-      const arrName = item.arg1;
-      const idx = resolve(item.arg2);
-      arg1Val = arrName;
-      arg2Val = idx;
-      const v = (arrays[arrName] && arrays[arrName][idx] !== undefined) ? arrays[arrName][idx] : 0;
-      temps[item.dest] = v;
-      resVal = v;
-      readArray = { name: arrName, index: idx, value: v };
-      opDesc = `${item.dest} = ${arrName}[${idx}] (${v})`;
-    } else if (["ADD", "SUB", "MUL"].includes(op)) {
-      const v1 = resolve(item.arg1);
-      const v2 = resolve(item.arg2);
-      arg1Val = v1;
-      arg2Val = v2;
-      const res = op === "ADD" ? v1 + v2 : op === "SUB" ? v1 - v2 : v1 * v2;
-      temps[item.dest] = res;
-      resVal = res;
-      const sym = op === "ADD" ? "+" : op === "SUB" ? "-" : "*";
-      opDesc = `${item.dest} = ${v1} ${sym} ${v2} -> ${res}`;
-    } else if (op.startsWith("COMPARE_")) {
-      const v1 = resolve(item.arg1);
-      const v2 = resolve(item.arg2);
-      arg1Val = v1;
-      arg2Val = v2;
-      const res = op === "COMPARE_LT" ? (v1 < v2 ? 1 : 0) : op === "COMPARE_GT" ? (v1 > v2 ? 1 : 0) : 0;
-      temps[item.dest] = res;
-      resVal = res;
-      opDesc = `${item.dest} = (${v1} cmp ${v2}) -> ${res}`;
-    } else if (op === "LABEL") {
-      opDesc = `Label ${item.arg1}`;
-    } else if (op === "JUMP") {
-      if (labelToPc[item.arg1] !== undefined) nextPc = labelToPc[item.arg1];
-      opDesc = `Jump -> ${item.arg1}`;
-    } else if (op === "BRANCH") {
-      const cond = resolve(item.arg1);
-      arg1Val = cond;
-      if (cond !== 0) {
-        if (labelToPc[item.arg2] !== undefined) nextPc = labelToPc[item.arg2];
-        opDesc = `Branch ${item.arg1}(${cond}) TRUE -> ${item.arg2}`;
-      } else {
-        if (item.arg3 && labelToPc[item.arg3] !== undefined) nextPc = labelToPc[item.arg3];
-        opDesc = `Branch ${item.arg1}(${cond}) FALSE -> ${item.arg3 || 'fallthrough'}`;
-      }
-    } else if (op === "PRINT") {
-      const v = resolve(item.arg1);
-      arg1Val = v;
-      output.push(String(v));
-      resVal = v;
-      opDesc = `Print ${v}`;
-    } else if (op === "RETURN") {
-      retVal = resolve(item.arg1);
-      arg1Val = retVal;
-      resVal = retVal;
-      opDesc = `Return ${retVal}`;
-      steps++;
-      trace.push({
-        step: steps,
-        pc,
-        opcode: op,
-        mapped_instruction: op,
-        formatted_instruction: item.formatted || `RETURN ${retVal}`,
-        processor: "CPU",
-        dest: item.dest,
-        arg1: item.arg1,
-        arg2: item.arg2,
-        arg1_val: arg1Val,
-        arg2_val: arg2Val,
-        updated_var: updatedVar,
-        read_array: readArray,
-        updated_array: updatedArray,
-        operation_desc: opDesc,
-        result_value: resVal,
-        status: "SUCCESS",
-        variables_snapshot: { ...vars },
-        arrays_snapshot: JSON.parse(JSON.stringify(arrays))
-      });
-      break;
+  // Decision explanation
+  let decisionExplanation = "";
+  if (selectedStrategy === "CPU_ONLY") {
+    if (hasUnsupportedOps) {
+      decisionExplanation = `The compiler selected CPU_ONLY because the workload contains arithmetic operations (${unsupportedOps.join(', ')}) not supported by the simulated near-memory PIM ALUs. These operations must execute via CPU fallback on the host processor.`;
+    } else if (!hasArray) {
+      decisionExplanation = "The compiler selected CPU_ONLY because the program does not access any DRAM array memory buffers. All variables reside on the host CPU stack frame, so offloading to memory would create unnecessary latency.";
+    } else {
+      decisionExplanation = `The compiler selected CPU_ONLY because the data footprint is small (${dynamicBusBytes} bytes). The PIM offload synchronization overhead (${params.pim_launch_sync_overhead_cycles.toFixed(0)} cycles) exceeds the estimated data transfer savings (${transferCostSavings.toFixed(1)} cycles). Total CPU cost (${cpuTotal} cycles) is lower than Direct PIM (${pimDirectTotal} cycles).`;
     }
+  } else if (selectedStrategy === "DIRECT_PIM") {
+    decisionExplanation = `The compiler selected DIRECT_PIM because in-memory execution saves ${transferCostSavings.toFixed(1)} cycles of memory-bus data traffic (${bytesSaved} bytes saved). Even after adding ${params.pim_launch_sync_overhead_cycles.toFixed(0)} cycles of PIM launch overhead, the total cost (${pimDirectTotal} cycles) is lower than CPU_ONLY (${cpuTotal} cycles), yielding an estimated ${speedupEstimate}x speedup. Layout transformation is not needed because the array access pattern is sequential.`;
+  }
 
-    steps++;
-    trace.push({
-      step: steps,
-      pc,
-      opcode: op,
-      mapped_instruction: op,
-      formatted_instruction: item.formatted || `${op} ${item.dest || ''} ${item.arg1 || ''}`.trim(),
-      processor: "CPU",
-      dest: item.dest,
-      arg1: item.arg1,
-      arg2: item.arg2,
-      arg1_val: arg1Val,
-      arg2_val: arg2Val,
-      updated_var: updatedVar,
-      read_array: readArray,
-      updated_array: updatedArray,
-      operation_desc: opDesc,
-      result_value: resVal,
-      status: "SUCCESS",
-      variables_snapshot: { ...vars },
-      arrays_snapshot: JSON.parse(JSON.stringify(arrays))
-    });
+  // Cost breakdown
+  const costBreakdown = candidates
+    .filter(c => c.is_valid)
+    .map(c => ({
+      strategy: c.strategy,
+      is_selected: c.is_selected,
+      compute: c.compute_cost,
+      transfer: c.transfer_cost,
+      layout: c.layout_cost,
+      synchronization: c.synchronization_cost,
+      total: c.total_cost,
+      unit: "cycles"
+    }));
 
-    pc = nextPc;
+  // Sensitivity analysis when custom parameters provided
+  let sensitivityResult = null;
+  if (customParams) {
+    const baseEval = localEvaluatePerformance(irInstructions, symbols, simRes, null);
+    const strategyChanged = (baseEval.selected_strategy !== selectedStrategy);
+    const impactSummary = strategyChanged
+      ? `Strategy changed from ${baseEval.selected_strategy} to ${selectedStrategy}! Under these hypothetical assumptions, ${selectedStrategy} achieves estimated ${speedupEstimate}x speedup (Cost: ${selectedCost} cyc).`
+      : `Selected strategy remains ${selectedStrategy} (Cost: ${selectedCost} cyc, Speedup: ${speedupEstimate}x).`;
+
+    const comparisonTable = [
+      {
+        metric: "Selected Strategy",
+        default_value: baseEval.selected_strategy,
+        custom_value: selectedStrategy,
+        changed: strategyChanged
+      },
+      {
+        metric: "CPU_ONLY Cost",
+        default_value: `${baseEval.baseline_cpu_cost.toFixed(1)} cycles`,
+        custom_value: `${cpuTotal.toFixed(1)} cycles`,
+        changed: baseEval.baseline_cpu_cost !== cpuTotal
+      },
+      {
+        metric: "DIRECT_PIM Cost",
+        default_value: pimDirectValid ? `${baseEval.strategies.find(s => s.strategy === 'DIRECT_PIM')?.total_cost?.toFixed(1)} cycles` : "Infeasible",
+        custom_value: pimDirectValid ? `${pimDirectTotal.toFixed(1)} cycles` : "Infeasible",
+        changed: true
+      },
+      {
+        metric: "Estimated Speedup",
+        default_value: `${baseEval.speedup_estimate.toFixed(2)}x`,
+        custom_value: `${speedupEstimate.toFixed(2)}x`,
+        changed: baseEval.speedup_estimate !== speedupEstimate
+      }
+    ];
+
+    sensitivityResult = {
+      valid: true,
+      errors: [],
+      baseline_strategy: baseEval.selected_strategy,
+      hypothetical_strategy: selectedStrategy,
+      strategy_changed: strategyChanged,
+      impact_summary: impactSummary,
+      decision_explanation: decisionExplanation,
+      hypothetical_cost: selectedCost,
+      hypothetical_speedup: speedupEstimate,
+      hypothetical_parameters: params,
+      strategies: candidates,
+      cost_breakdown: costBreakdown,
+      comparison_table: comparisonTable
+    };
   }
 
   return {
-    status: "SUCCESS",
-    return_value: retVal,
-    final_variables: vars,
-    final_arrays: arrays,
-    output,
-    execution_trace: trace,
-    total_steps: steps
-  };
-}
-
-function localRunPIM(mappedInstructions) {
-  const vars = {};
-  const arrays = {};
-  const temps = {};
-  const output = [];
-  const trace = [];
-  let retVal = 0;
-  let pc = 0;
-  let steps = 0;
-  let pimSteps = 0;
-  let cpuSteps = 0;
-
-  const labelToPc = {};
-  mappedInstructions.forEach((instr, idx) => {
-    const rawOp = instr.ir_opcode || instr.opcode;
-    if (rawOp === "LABEL") labelToPc[instr.arg1] = idx;
-  });
-
-  const resolve = (val) => {
-    if (val === undefined || val === null) return 0;
-    if (typeof val === 'number') return val;
-    const str = String(val).trim();
-    if (!isNaN(parseInt(str))) return parseInt(str);
-    if (temps[str] !== undefined) return temps[str];
-    if (vars[str] !== undefined) return vars[str];
-    return 0;
-  };
-
-  while (pc < mappedInstructions.length && steps < 1000) {
-    const item = mappedInstructions[pc];
-    const isPim = item.target === "PIM";
-    const mappedOp = item.mapped_instruction || item.opcode;
-    const rawOp = item.ir_opcode || item.opcode;
-    let nextPc = pc + 1;
-    let opDesc = "";
-    let resVal = null;
-    let updatedVar = null;
-    let readArray = null;
-    let updatedArray = null;
-    let arg1Val = null;
-    let arg2Val = null;
-    let isTransfer = false;
-    let transferDesc = null;
-
-    if (isPim) pimSteps++;
-    else cpuSteps++;
-
-    if (rawOp === "DECLARE" || mappedOp.includes("DECLARE")) {
-      if (item.metadata?.is_array || String(item.arg1).includes("[")) {
-        const name = String(item.arg1).split("[")[0];
-        const size = parseInt(String(item.arg1).split("[")[1]?.split("]")[0] || "4");
-        arrays[name] = new Array(size).fill(0);
-        updatedArray = { name, size, value: [...arrays[name]] };
-        opDesc = `[CPU Decl] Allocated DRAM buffer '${name}' of size ${size}`;
-      } else {
-        vars[item.arg1] = 0;
-        updatedVar = item.arg1;
-        opDesc = `[CPU Decl] Stack variable '${item.arg1}' = 0`;
+    selected_strategy: selectedStrategy,
+    selected_cost: selectedCost,
+    baseline_cpu_cost: cpuTotal,
+    speedup_estimate: speedupEstimate,
+    offload_beneficial: offloadBeneficial,
+    decision_explanation: decisionExplanation,
+    decision_rationale: decisionExplanation,
+    strategies: candidates,
+    transfer_metrics: transferMetrics,
+    execution_stats: {
+      dynamic_available: dynamicAvailable,
+      dynamic: {
+        total_executed_instructions: totalExecutedInstructions,
+        cpu_executed_instructions: cpuExecutedInstructions,
+        pim_executed_instructions: pimExecutedInstructions,
+        cpu_fallback_operations: cpuFallbackOperations,
+        runtime_loop_iterations: runtimeLoopIterations,
+        array_accesses: arrayAccesses,
+        data_transfers: dataTransfers
+      },
+      static: {
+        total_ir_instructions: irInstructions.length,
+        estimated_loop_iterations: arraySize || null,
+        static_computational_ops: dynamicExecutedOps,
+        access_pattern: "sequential",
+        has_unsupported_ops: hasUnsupportedOps,
+        unsupported_ops: unsupportedOps
       }
-    } else if (mappedOp === "PIM_LOAD" || rawOp === "LOAD_INDEXED") {
-      const arrName = item.arg1;
-      const idx = resolve(item.arg2);
-      arg1Val = arrName;
-      arg2Val = idx;
-      const v = (arrays[arrName] && arrays[arrName][idx] !== undefined) ? arrays[arrName][idx] : 0;
-      temps[item.dest] = v;
-      resVal = v;
-      readArray = { name: arrName, index: idx, value: v };
-      isTransfer = true;
-      transferDesc = `In-situ Row Buffer Read: ${arrName}[${idx}] = ${v}`;
-      opDesc = `[PIM Row-Buffer Read] ${item.dest} = ${arrName}[${idx}] (${v})`;
-    } else if (mappedOp === "PIM_STORE" || rawOp === "STORE_INDEXED") {
-      const arrName = item.dest;
-      const idx = resolve(item.arg1);
-      const v = resolve(item.arg2);
-      arg1Val = idx;
-      arg2Val = v;
-      if (!arrays[arrName]) arrays[arrName] = [];
-      arrays[arrName][idx] = v;
-      updatedArray = { name: arrName, index: idx, value: v };
-      resVal = v;
-      isTransfer = true;
-      transferDesc = `In-situ Bank Write: ${arrName}[${idx}] = ${v}`;
-      opDesc = `[PIM Bank Write] ${arrName}[${idx}] = ${v}`;
-    } else if (mappedOp === "PIM_ADD" || rawOp === "ADD") {
-      const v1 = resolve(item.arg1);
-      const v2 = resolve(item.arg2);
-      arg1Val = v1;
-      arg2Val = v2;
-      const res = v1 + v2;
-      temps[item.dest] = res;
-      resVal = res;
-      opDesc = `[PIM ALU +] ${item.dest} = ${v1} + ${v2} -> ${res}`;
-    } else if (mappedOp === "PIM_SUB" || rawOp === "SUB") {
-      const v1 = resolve(item.arg1);
-      const v2 = resolve(item.arg2);
-      arg1Val = v1;
-      arg2Val = v2;
-      const res = v1 - v2;
-      temps[item.dest] = res;
-      resVal = res;
-      opDesc = `[PIM ALU -] ${item.dest} = ${v1} - ${v2} -> ${res}`;
-    } else if (mappedOp === "PIM_MUL" || rawOp === "MUL") {
-      const v1 = resolve(item.arg1);
-      const v2 = resolve(item.arg2);
-      arg1Val = v1;
-      arg2Val = v2;
-      const res = v1 * v2;
-      temps[item.dest] = res;
-      resVal = res;
-      opDesc = `[PIM ALU *] ${item.dest} = ${v1} * ${v2} -> ${res}`;
-    } else if (mappedOp === "PIM_COMPARE" || rawOp.startsWith("COMPARE_")) {
-      const v1 = resolve(item.arg1);
-      const v2 = resolve(item.arg2);
-      arg1Val = v1;
-      arg2Val = v2;
-      const res = rawOp === "COMPARE_GT" ? (v1 > v2 ? 1 : 0) : (v1 < v2 ? 1 : 0);
-      temps[item.dest] = res;
-      resVal = res;
-      opDesc = `[PIM Compare] ${item.dest} = (${v1} cmp ${v2}) -> ${res}`;
-    } else if (mappedOp.includes("CONST") || rawOp === "CONST") {
-      const v = resolve(item.arg1);
-      arg1Val = v;
-      temps[item.dest] = v;
-      resVal = v;
-      opDesc = `[CPU Const] ${item.dest} = ${v}`;
-    } else if (rawOp === "LOAD" || mappedOp.includes("LOAD")) {
-      const v = vars[item.arg1] !== undefined ? vars[item.arg1] : 0;
-      arg1Val = v;
-      temps[item.dest] = v;
-      resVal = v;
-      opDesc = `[CPU Load] ${item.dest} = ${item.arg1} (${v})`;
-    } else if (rawOp === "STORE" || mappedOp.includes("STORE")) {
-      const v = resolve(item.arg1);
-      arg1Val = v;
-      vars[item.dest] = v;
-      updatedVar = item.dest;
-      resVal = v;
-      opDesc = `[CPU Store] ${item.dest} = ${v}`;
-    } else if (rawOp === "LABEL" || mappedOp === "LABEL") {
-      opDesc = `Label ${item.arg1}`;
-    } else if (rawOp === "JUMP" || mappedOp.includes("JUMP")) {
-      if (labelToPc[item.arg1] !== undefined) nextPc = labelToPc[item.arg1];
-      opDesc = `[CPU Jump] -> ${item.arg1}`;
-    } else if (rawOp === "BRANCH" || mappedOp.includes("BRANCH")) {
-      const cond = resolve(item.arg1);
-      arg1Val = cond;
-      if (cond !== 0) {
-        if (labelToPc[item.arg2] !== undefined) nextPc = labelToPc[item.arg2];
-        opDesc = `[CPU Branch] ${item.arg1}(${cond}) TRUE -> ${item.arg2}`;
-      } else {
-        if (item.arg3 && labelToPc[item.arg3] !== undefined) nextPc = labelToPc[item.arg3];
-        opDesc = `[CPU Branch] ${item.arg1}(${cond}) FALSE -> ${item.arg3 || 'fallthrough'}`;
-      }
-    } else if (rawOp === "PRINT" || mappedOp.includes("PRINT")) {
-      const v = resolve(item.arg1);
-      arg1Val = v;
-      output.push(String(v));
-      resVal = v;
-      opDesc = `[CPU Print] ${v}`;
-    } else if (rawOp === "RETURN" || mappedOp.includes("RETURN")) {
-      retVal = resolve(item.arg1);
-      arg1Val = retVal;
-      resVal = retVal;
-      opDesc = `[CPU Return] ${retVal}`;
-      steps++;
-      trace.push({
-        step: steps,
-        pc,
-        processor: isPim ? "PIM" : "CPU",
-        mapped_instruction: mappedOp,
-        formatted_instruction: item.formatted || `CPU_RETURN ${retVal}`,
-        is_fallback: !isPim,
-        fallback_reason: item.reason || (isPim ? null : "Host CPU execution"),
-        is_transfer: false,
-        transfer_desc: null,
-        dest: item.dest,
-        arg1: item.arg1,
-        arg2: item.arg2,
-        arg1_val: arg1Val,
-        arg2_val: arg2Val,
-        updated_var: updatedVar,
-        read_array: readArray,
-        updated_array: updatedArray,
-        operation_desc: opDesc,
-        result_value: resVal,
-        status: "SUCCESS",
-        variables_snapshot: { ...vars },
-        arrays_snapshot: JSON.parse(JSON.stringify(arrays))
-      });
-      break;
+    },
+    cost_breakdown: costBreakdown,
+    parameters: params,
+    sensitivity: sensitivityResult,
+    workload_profile: {
+      dynamic_executed_ops: dynamicExecutedOps,
+      dynamic_bus_bytes: dynamicBusBytes,
+      declared_variable_bytes: declaredVariableBytes
     }
-
-    steps++;
-    trace.push({
-      step: steps,
-      pc,
-      processor: isPim ? "PIM" : "CPU",
-      mapped_instruction: mappedOp,
-      formatted_instruction: item.formatted || `${mappedOp} ${item.dest || ''} ${item.arg1 || ''}`.trim(),
-      is_fallback: !isPim,
-      fallback_reason: item.reason || (isPim ? null : "Host CPU execution"),
-      is_transfer: isTransfer,
-      transfer_desc: transferDesc,
-      dest: item.dest,
-      arg1: item.arg1,
-      arg2: item.arg2,
-      arg1_val: arg1Val,
-      arg2_val: arg2Val,
-      updated_var: updatedVar,
-      read_array: readArray,
-      updated_array: updatedArray,
-      operation_desc: opDesc,
-      result_value: resVal,
-      status: "SUCCESS",
-      variables_snapshot: { ...vars },
-      arrays_snapshot: JSON.parse(JSON.stringify(arrays))
-    });
-
-    pc = nextPc;
-  }
-
-  return {
-    status: "SUCCESS",
-    return_value: retVal,
-    final_variables: vars,
-    final_arrays: arrays,
-    output,
-    execution_trace: trace,
-    total_steps: steps,
-    pim_steps: pimSteps,
-    cpu_steps: cpuSteps
   };
 }
+

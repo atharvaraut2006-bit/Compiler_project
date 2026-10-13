@@ -8,7 +8,8 @@ from .ast_nodes import (
     ASTNode, Program, FunctionDef, VarDecl, ArrayDecl, Block,
     Assignment, CompoundAssignment, ForLoop, WhileLoop, IfStatement,
     ReturnStatement, PrintStatement, ExprStatement, BinaryOp, UnaryOp,
-    ArrayAccess, Identifier, IntLiteral
+    ArrayAccess, Identifier, IntLiteral, FloatLiteral, StringLiteral,
+    FunctionCall, MemberAccess, StructDef
 )
 
 
@@ -47,6 +48,8 @@ class IRInstruction:
             return f"DECLARE {self.arg1} : {self.metadata.get('data_type', 'int')}"
         elif op == "CONST":
             return f"CONST {self.dest}, {self.arg1}"
+        elif op == "CONST_STR":
+            return f'CONST_STR {self.dest}, "{self.arg1}"'
         elif op == "LOAD":
             return f"LOAD {self.dest}, {self.arg1}"
         elif op == "STORE":
@@ -56,8 +59,25 @@ class IRInstruction:
         elif op == "STORE_INDEXED":
             return f"STORE_INDEXED {self.dest}[{self.arg1}], {self.arg2}"
         elif op in ("ADD", "SUB", "MUL", "DIV", "MOD",
-                    "COMPARE_LT", "COMPARE_LE", "COMPARE_GT", "COMPARE_GE", "COMPARE_EQ", "COMPARE_NE"):
+                    "COMPARE_LT", "COMPARE_LE", "COMPARE_GT", "COMPARE_GE", "COMPARE_EQ", "COMPARE_NE",
+                    "BIT_AND", "BIT_OR", "BIT_XOR", "SHIFT_LEFT", "SHIFT_RIGHT"):
             return f"{op} {self.dest}, {self.arg1}, {self.arg2}"
+        elif op == "BIT_NOT":
+            return f"BIT_NOT {self.dest}, {self.arg1}"
+        elif op == "CALL":
+            return f"CALL {self.dest}, {self.arg1}({self.arg2 or ''})"
+        elif op == "ADDRESS_OF":
+            return f"ADDRESS_OF {self.dest}, &{self.arg1}"
+        elif op == "LOAD_PTR":
+            return f"LOAD_PTR {self.dest}, *{self.arg1}"
+        elif op == "STORE_PTR":
+            return f"STORE_PTR *{self.dest}, {self.arg1}"
+        elif op == "LOAD_FIELD":
+            return f"LOAD_FIELD {self.dest}, {self.arg1}.{self.arg2}"
+        elif op == "STORE_FIELD":
+            return f"STORE_FIELD {self.dest}.{self.arg1}, {self.arg2}"
+        elif op == "STRUCT_DEF":
+            return f"STRUCT_DEF {self.arg1}"
         elif op == "JUMP":
             return f"JUMP {self.arg1}"
         elif op == "BRANCH":
@@ -163,8 +183,24 @@ class IRGenerator:
             for decl in node.declarations:
                 self._visit_node(decl)
         elif isinstance(node, FunctionDef):
+            if node.name != "main":
+                self._emit(
+                    opcode="LABEL",
+                    arg1=f"FUNC_{node.name}",
+                    line=node.line,
+                    column=node.column,
+                    metadata={"operation_type": "function_entry", "func_name": node.name}
+                )
             if node.body:
                 self._visit_node(node.body)
+        elif isinstance(node, StructDef):
+            self._emit(
+                opcode="STRUCT_DEF",
+                arg1=node.name,
+                line=node.line,
+                column=node.column,
+                metadata={"operation_type": "type_definition", "members": node.members}
+            )
         elif isinstance(node, Block):
             for stmt in node.statements:
                 self._visit_node(stmt)
@@ -283,6 +319,27 @@ class IRGenerator:
                     "source_var": t_val,
                     "memory_region": "stack"
                 }
+            )
+        elif isinstance(node.target, UnaryOp) and node.target.op == "*":
+            t_ptr = self._generate_expr(node.target.operand)
+            self._emit(
+                opcode="STORE_PTR",
+                dest=t_ptr,
+                arg1=t_val,
+                line=node.line,
+                column=node.column,
+                metadata={"operation_type": "pointer_store", "memory_region": "stack"}
+            )
+        elif isinstance(node.target, MemberAccess):
+            t_obj = node.target.object.name if isinstance(node.target.object, Identifier) else self._generate_expr(node.target.object)
+            self._emit(
+                opcode="STORE_FIELD",
+                dest=t_obj,
+                arg1=node.target.member,
+                arg2=t_val,
+                line=node.line,
+                column=node.column,
+                metadata={"operation_type": "field_store"}
             )
 
     def _visit_compound_assignment(self, node: CompoundAssignment):
@@ -485,6 +542,30 @@ class IRGenerator:
             )
             return t
 
+        elif isinstance(expr, FloatLiteral):
+            t = self._next_temp()
+            self._emit(
+                opcode="CONST",
+                dest=t,
+                arg1=str(expr.value),
+                line=expr.line,
+                column=expr.column,
+                metadata={"operation_type": "immediate", "value": expr.value, "data_type": "float"}
+            )
+            return t
+
+        elif isinstance(expr, StringLiteral):
+            t = self._next_temp()
+            self._emit(
+                opcode="CONST_STR",
+                dest=t,
+                arg1=expr.value,
+                line=expr.line,
+                column=expr.column,
+                metadata={"operation_type": "immediate_str", "value": expr.value}
+            )
+            return t
+
         elif isinstance(expr, Identifier):
             t = self._next_temp()
             self._emit(
@@ -517,6 +598,45 @@ class IRGenerator:
             )
             return t_res
 
+        elif isinstance(expr, FunctionCall):
+            arg_temps = [self._generate_expr(arg) for arg in expr.arguments]
+            t_res = self._next_temp()
+            args_str = ", ".join(arg_temps)
+            self._emit(
+                opcode="CALL",
+                dest=t_res,
+                arg1=expr.name,
+                arg2=args_str,
+                line=expr.line,
+                column=expr.column,
+                metadata={
+                    "operation_type": "function_call",
+                    "func_name": expr.name,
+                    "arg_count": len(expr.arguments),
+                    "memory_region": "host_cache"
+                }
+            )
+            return t_res
+
+        elif isinstance(expr, MemberAccess):
+            t_obj = self._generate_expr(expr.object_expr)
+            t_res = self._next_temp()
+            self._emit(
+                opcode="LOAD_FIELD",
+                dest=t_res,
+                arg1=t_obj,
+                arg2=expr.member,
+                line=expr.line,
+                column=expr.column,
+                metadata={
+                    "operation_type": "member_access",
+                    "member": expr.member,
+                    "is_pointer": expr.is_pointer,
+                    "memory_region": "host_cache"
+                }
+            )
+            return t_res
+
         elif isinstance(expr, BinaryOp):
             t_left = self._generate_expr(expr.left)
             t_right = self._generate_expr(expr.right)
@@ -535,7 +655,12 @@ class IRGenerator:
                 "==": "COMPARE_EQ",
                 "!=": "COMPARE_NE",
                 "&&": "COMPARE_NE",
-                "||": "COMPARE_NE"
+                "||": "COMPARE_NE",
+                "&": "BIT_AND",
+                "|": "BIT_OR",
+                "^": "BIT_XOR",
+                "<<": "SHIFT_LEFT",
+                ">>": "SHIFT_RIGHT"
             }
             opcode = op_map.get(expr.op, "ADD")
             is_cmp = opcode.startswith("COMPARE")
@@ -547,7 +672,7 @@ class IRGenerator:
                 line=expr.line,
                 column=expr.column,
                 metadata={
-                    "operation_type": "comparison" if is_cmp else "arithmetic",
+                    "operation_type": "comparison" if is_cmp else ("bitwise" if opcode.startswith("BIT") or opcode.startswith("SHIFT") else "arithmetic"),
                     "operator": expr.op
                 }
             )
@@ -583,6 +708,57 @@ class IRGenerator:
                     line=expr.line,
                     column=expr.column,
                     metadata={"operation_type": "comparison", "operator": "!"}
+                )
+                return t_res
+
+            elif expr.op == "&":
+                if isinstance(expr.operand, Identifier):
+                    t_res = self._next_temp()
+                    self._emit(
+                        opcode="ADDRESS_OF",
+                        dest=t_res,
+                        arg1=expr.operand.name,
+                        line=expr.line,
+                        column=expr.column,
+                        metadata={"operation_type": "address_of", "source_var": expr.operand.name, "memory_region": "host_cache"}
+                    )
+                    return t_res
+                else:
+                    t_val = self._generate_expr(expr.operand)
+                    t_res = self._next_temp()
+                    self._emit(
+                        opcode="ADDRESS_OF",
+                        dest=t_res,
+                        arg1=t_val,
+                        line=expr.line,
+                        column=expr.column,
+                        metadata={"operation_type": "address_of", "memory_region": "host_cache"}
+                    )
+                    return t_res
+
+            elif expr.op == "*":
+                t_ptr = self._generate_expr(expr.operand)
+                t_res = self._next_temp()
+                self._emit(
+                    opcode="LOAD_PTR",
+                    dest=t_res,
+                    arg1=t_ptr,
+                    line=expr.line,
+                    column=expr.column,
+                    metadata={"operation_type": "pointer_deref", "ptr_var": t_ptr, "memory_region": "host_cache"}
+                )
+                return t_res
+
+            elif expr.op == "~":
+                t_val = self._generate_expr(expr.operand)
+                t_res = self._next_temp()
+                self._emit(
+                    opcode="BIT_NOT",
+                    dest=t_res,
+                    arg1=t_val,
+                    line=expr.line,
+                    column=expr.column,
+                    metadata={"operation_type": "bitwise", "operator": "~"}
                 )
                 return t_res
 

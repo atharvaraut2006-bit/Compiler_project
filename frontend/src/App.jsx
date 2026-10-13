@@ -8,8 +8,6 @@ import ASTViewer from './components/ASTViewer';
 import SemanticViewer from './components/SemanticViewer';
 import IRViewer from './components/IRViewer';
 import PIMMappingViewer from './components/PIMMappingViewer';
-import SimulationViewer from './components/SimulationViewer';
-import LanguageSpec from './components/LanguageSpec';
 import './styles/variables.css';
 import './App.css';
 
@@ -29,7 +27,6 @@ export const App = () => {
   const [isCompiling, setIsCompiling] = useState(false);
   const [compilationResult, setCompilationResult] = useState(null);
   const [activeTab, setActiveTab] = useState('tokens'); // 'tokens', 'ast', 'semantic'
-  const [showSpec, setShowSpec] = useState(false);
 
   const handleCompile = useCallback(async () => {
     if (!sourceCode.trim()) {
@@ -89,8 +86,7 @@ export const App = () => {
       syntax: 'ast',
       semantic: 'semantic',
       ir: 'ir',
-      pim_mapping: 'mapping',
-      simulation: 'simulation'
+      pim_mapping: 'mapping'
     };
     if (map[stageId]) {
       setActiveTab(map[stageId]);
@@ -142,29 +138,7 @@ export const App = () => {
           </div>
         </div>
 
-        <div className="header-actions">
-          <button
-            className={`btn btn-ghost btn-sm ${showSpec ? 'active' : ''}`}
-            onClick={() => setShowSpec(!showSpec)}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-              <line x1="16" y1="13" x2="8" y2="13" />
-              <line x1="16" y1="17" x2="8" y2="17" />
-              <polyline points="10 9 9 9 8 9" />
-            </svg>
-            {showSpec ? 'Close Spec' : 'Language Spec'}
-          </button>
-        </div>
       </header>
-
-      {/* Language Specification Drawer / Card */}
-      {showSpec && (
-        <section className="spec-drawer">
-          <LanguageSpec />
-        </section>
-      )}
 
       {/* Main Vertical Workspace Layout */}
       <main className="workspace-main">
@@ -304,21 +278,10 @@ export const App = () => {
                 className={`segmented-tab ${activeTab === 'mapping' ? 'active' : ''}`}
                 onClick={() => setActiveTab('mapping')}
               >
-                PIM Mapping
+                PIM Mapping & Performance
                 {compilationResult?.mapping && (
                   <span className="tab-pill">
                     {compilationResult.mapping.pim_count} PIM / {compilationResult.mapping.cpu_count} CPU
-                  </span>
-                )}
-              </button>
-              <button
-                className={`segmented-tab ${activeTab === 'simulation' ? 'active' : ''}`}
-                onClick={() => setActiveTab('simulation')}
-              >
-                Execution Simulation
-                {compilationResult?.simulation?.comparison?.verdict && (
-                  <span className={`tab-pill ${compilationResult.simulation.comparison.verdict === 'PASS' ? 'tab-pill-success' : 'tab-pill-warning'}`}>
-                    {compilationResult.simulation.comparison.verdict}
                   </span>
                 )}
               </button>
@@ -336,7 +299,7 @@ export const App = () => {
                   </div>
                   <h3 className="placeholder-title">Ready to Compile</h3>
                   <p className="placeholder-desc">
-                    Enter C code or select a sample, then click <strong>Compile & Analyze</strong> to inspect tokens, the abstract syntax tree, 3AC intermediate representation, PIM hardware mapping, and dual execution simulation.
+                    Enter C code or select a sample, then click <strong>Compile & Analyze</strong> to inspect tokens, the abstract syntax tree, 3AC intermediate representation, and PIM hardware mapping & performance analysis.
                   </p>
                 </div>
               ) : (
@@ -357,13 +320,10 @@ export const App = () => {
                     <IRViewer ir={compilationResult.ir} />
                   )}
                   {activeTab === 'mapping' && (
-                    <PIMMappingViewer mapping={compilationResult.mapping} />
-                  )}
-                  {activeTab === 'simulation' && (
-                    <SimulationViewer
-                      simulation={compilationResult.simulation}
-                      onReRunSimulation={() => handleCompile(false)}
-                      isCompiling={isCompiling}
+                    <PIMMappingViewer
+                      mapping={compilationResult.mapping}
+                      performance={compilationResult.performance}
+                      sourceCode={sourceCode}
                     />
                   )}
                 </>
