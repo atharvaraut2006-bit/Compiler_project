@@ -14,7 +14,6 @@ import {
   FaTable,
   FaChartColumn,
   FaChartPie,
-  FaArrowTrendUp,
   FaMemory,
   FaSliders
 } from 'react-icons/fa6';
@@ -174,8 +173,8 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
   const [filterType, setFilterType] = useState('all'); // 'all', 'pim', 'cpu'
   const [searchTerm, setSearchTerm] = useState('');
 
-  // 1b. Cost component chart view: 'both', 'stacked', or 'pie'
-  const [costViewMode, setCostViewMode] = useState('both');
+  // 1b. Cost component chart view: 'stacked' (Bar) or 'pie' (Pie)
+  const [costViewMode, setCostViewMode] = useState('stacked');
 
   // 2. Cost Model Assumptions Collapsible Drawer
   const [showAssumptionsDrawer, setShowAssumptionsDrawer] = useState(false);
@@ -709,14 +708,6 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
             <div className="chart-view-toggle">
               <button
                 type="button"
-                className={`view-toggle-btn ${costViewMode === 'both' ? 'active' : ''}`}
-                onClick={() => setCostViewMode('both')}
-                title="Show both stacked bar and pie chart"
-              >
-                All Views
-              </button>
-              <button
-                type="button"
                 className={`view-toggle-btn ${costViewMode === 'stacked' ? 'active' : ''}`}
                 onClick={() => setCostViewMode('stacked')}
                 title="Show stacked horizontal bar chart"
@@ -737,7 +728,7 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
             Analytical breakdown of execution latency across Compute, Transfer, Layout, and Synchronization.
           </p>
 
-          {(costViewMode === 'stacked' || costViewMode === 'both') && (
+          {costViewMode === 'stacked' && (
             <>
               <div className="stacked-bars-container">
                 {activeData.cost_breakdown.map((item) => {
@@ -826,14 +817,8 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
           )}
 
           {/* 4A2. Pie / Donut Chart Component Breakdown */}
-          {(costViewMode === 'pie' || costViewMode === 'both') && (
-            <div className={`pie-charts-wrapper ${costViewMode === 'pie' ? 'pie-only' : ''}`}>
-              {costViewMode === 'both' && (
-                <div className="pie-charts-heading">
-                  <FaChartPie style={{ color: '#f59e0b' }} />
-                  <span>Proportional Breakdown (Pie Chart)</span>
-                </div>
-              )}
+          {costViewMode === 'pie' && (
+            <div className="pie-charts-wrapper pie-only">
               <div className="pie-charts-grid">
                 {activeData.cost_breakdown.map((item) => (
                   <DonutCostChart key={item.strategy} item={item} />
@@ -847,7 +832,6 @@ export const PIMMappingViewer = ({ mapping, performance, sourceCode }) => {
         <div className="perf-section-card">
           <div className="card-title-row">
             <div className="title-with-icon">
-              <FaArrowTrendUp className="section-title-icon" style={{ color: '#10b981' }} />
               <h3 className="section-title">Speedup & Relative Latency</h3>
             </div>
             <span className="unit-label">Normalized to CPU</span>
