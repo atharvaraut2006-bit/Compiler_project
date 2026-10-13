@@ -6,32 +6,117 @@ export const IRViewer = ({ ir }) => {
   const [filterText, setFilterText] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const instructions = ir?.instructions || [];
-  const formattedText = ir?.formatted || '';
+  // Normalize instructions with guaranteed 1-based index and opcode/operands separation
+  const allInstructions = useMemo(() => {
+    const raw = ir?.instructions || [];
+    if (raw.length > 0) {
+      return raw.map((instr, idx) => {
+        const opcode = String(instr.opcode || '').trim();
+        const formatted = String(instr.formatted || '').trim();
+        const isLabel = opcode === 'LABEL' || formatted.endsWith(':');
+        let operands = '';
+
+        if (!isLabel) {
+          if (opcode && formatted.startsWith(opcode)) {
+            operands = formatted.slice(opcode.length).trim();
+          } else {
+            const firstSpace = formatted.indexOf(' ');
+            if (firstSpace !== -1) {
+              operands = formatted.slice(firstSpace + 1).trim();
+            }
+          }
+        }
+
+        return {
+          id: instr.id || `ir_${idx + 1}`,
+          origIndex: idx + 1,
+          opcode: opcode || (isLabel ? 'LABEL' : 'OP'),
+          formatted: formatted || (isLabel ? `${instr.arg1}:` : `${opcode} ${operands}`.trim()),
+          operands,
+          isLabel,
+          dest: instr.dest,
+          arg1: instr.arg1,
+          arg2: instr.arg2,
+          arg3: instr.arg3,
+          line: instr.line,
+          column: instr.column,
+          metadata: instr.metadata || {}
+        };
+      });
+    }
+
+    // Fallback if ir.instructions is not present but formatted string is
+    const fmtText = String(ir?.formatted || '').trim();
+    if (fmtText) {
+      return fmtText.split('\n').filter(l => l.trim().length > 0).map((line, idx) => {
+        const trimmed = line.trim();
+        const isLabel = trimmed.endsWith(':');
+        let opcode = '';
+        let operands = '';
+
+        if (isLabel) {
+          opcode = 'LABEL';
+        } else {
+          const firstSpace = trimmed.indexOf(' ');
+          if (firstSpace !== -1) {
+            opcode = trimmed.slice(0, firstSpace);
+            operands = trimmed.slice(firstSpace + 1).trim();
+          } else {
+            opcode = trimmed;
+          }
+        }
+
+        return {
+          id: `ir_${idx + 1}`,
+          origIndex: idx + 1,
+          opcode: opcode || 'OP',
+          formatted: trimmed,
+          operands,
+          isLabel,
+          dest: null,
+          arg1: operands,
+          arg2: null,
+          arg3: null,
+          line: idx + 1,
+          column: 1,
+          metadata: {}
+        };
+      });
+    }
+
+    return [];
+  }, [ir]);
 
   const filteredInstructions = useMemo(() => {
-    if (!filterText || !filterText.trim()) return instructions;
+    if (!filterText || !filterText.trim()) return allInstructions;
     const lower = filterText.toLowerCase().trim();
-    return instructions.filter((instr) => {
+    return allInstructions.filter((instr) => {
       const op = String(instr.opcode ?? '').toLowerCase();
       const dest = String(instr.dest ?? '').toLowerCase();
       const a1 = String(instr.arg1 ?? '').toLowerCase();
       const a2 = String(instr.arg2 ?? '').toLowerCase();
       const a3 = String(instr.arg3 ?? '').toLowerCase();
       const fmt = String(instr.formatted ?? '').toLowerCase();
+      const ops = String(instr.operands ?? '').toLowerCase();
+      const idxStr = String(instr.origIndex);
       return (
         op.includes(lower) ||
         dest.includes(lower) ||
         a1.includes(lower) ||
         a2.includes(lower) ||
         a3.includes(lower) ||
-        fmt.includes(lower)
+        fmt.includes(lower) ||
+        ops.includes(lower) ||
+        idxStr === lower
       );
     });
-  }, [instructions, filterText]);
+  }, [allInstructions, filterText]);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(formattedText);
+    const textToCopy = filterText.trim()
+      ? filteredInstructions.map((i) => i.formatted).join('\n')
+      : (ir?.formatted || allInstructions.map((i) => i.formatted).join('\n'));
+    navigator.clipboard.writeText(textToCopy);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -45,7 +130,7 @@ export const IRViewer = ({ ir }) => {
     return 'badge-op-default';
   };
 
-  if (!ir || instructions.length === 0) {
+  if (!ir || allInstructions.length === 0) {
     return (
       <div className="empty-tab-state">
         <p>No Intermediate Representation generated.</p>
@@ -98,30 +183,57 @@ export const IRViewer = ({ ir }) => {
               onClick={() => setViewMode('formatted')}
             >
               <FaCode size={12} />
-              <span>Formatted</span>
+              <span>Structured IR</span>
             </button>
             <button
               className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
               onClick={() => setViewMode('table')}
             >
               <FaTableList size={12} />
-              <span>Table</span>
+              <span>Tuple Table</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Viewport: Formatted vs Structured Table */}
+      {/* Viewport: Structured 3AC Table vs Tuple Table */}
       {viewMode === 'formatted' ? (
-        <div className="ir-code-display">
-          <div className="code-line-numbers">
-            {formattedText.split('\n').map((_, idx) => (
-              <span key={idx} className="line-num">
-                {idx + 1}
-              </span>
-            ))}
-          </div>
-          <pre className="code-content-pre">{formattedText}</pre>
+        <div className="table-wrapper ir-formatted-table-wrapper">
+          <table className="data-table ir-formatted-table">
+            <thead>
+              <tr>
+                <th className="col-ir-idx">#</th>
+                <th className="col-ir-op">Opcode</th>
+                <th className="col-ir-operands">Operands / Arguments</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredInstructions.map((instr) => (
+                <tr
+                  key={instr.id || instr.origIndex}
+                  className={`ir-code-row ${instr.isLabel ? 'ir-label-row' : ''}`}
+                >
+                  <td className="col-ir-idx text-muted font-mono">{instr.origIndex}</td>
+                  {instr.isLabel ? (
+                    <td colSpan={2} className="col-ir-label-cell">
+                      <span className="ir-label-tag">{instr.formatted}</span>
+                    </td>
+                  ) : (
+                    <>
+                      <td className="col-ir-op">
+                        <span className={`ir-opcode-pill ${getOpcodeBadgeClass(instr.opcode)}`}>
+                          {instr.opcode}
+                        </span>
+                      </td>
+                      <td className="col-ir-operands font-mono">
+                        {instr.operands || '—'}
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : (
         <div className="table-wrapper ir-table-wrapper">
@@ -137,9 +249,9 @@ export const IRViewer = ({ ir }) => {
               </tr>
             </thead>
             <tbody>
-              {filteredInstructions.map((instr, idx) => (
-                <tr key={instr.id || idx}>
-                  <td className="col-ir-idx text-muted font-mono">{idx + 1}</td>
+              {filteredInstructions.map((instr) => (
+                <tr key={instr.id || instr.origIndex}>
+                  <td className="col-ir-idx text-muted font-mono">{instr.origIndex}</td>
                   <td className="col-ir-op">
                     <span className={`ir-opcode-pill ${getOpcodeBadgeClass(instr.opcode)}`}>
                       {instr.opcode}
