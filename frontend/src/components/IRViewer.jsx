@@ -6,12 +6,13 @@ export const IRViewer = ({ ir }) => {
   const [filterText, setFilterText] = useState('');
   const [copied, setCopied] = useState(false);
 
-  // Normalize instructions with guaranteed 1-based index and opcode/operands separation
+  // Normalize instructions with guaranteed 1-based index and standard 3AC fields:
+  // (operator, arg1, arg2, result)
   const allInstructions = useMemo(() => {
     const raw = ir?.instructions || [];
     if (raw.length > 0) {
       return raw.map((instr, idx) => {
-        const opcode = String(instr.opcode || '').trim();
+        const opcode = String(instr.opcode || instr.operator || '').trim();
         const formatted = String(instr.formatted || '').trim();
         const isLabel = opcode === 'LABEL' || formatted.endsWith(':');
         let operands = '';
@@ -27,14 +28,20 @@ export const IRViewer = ({ ir }) => {
           }
         }
 
+        const resultVal = instr.result !== undefined && instr.result !== null
+          ? instr.result
+          : (instr.dest !== undefined ? instr.dest : null);
+
         return {
           id: instr.id || `ir_${idx + 1}`,
           origIndex: idx + 1,
+          operator: opcode || (isLabel ? 'LABEL' : 'OP'),
           opcode: opcode || (isLabel ? 'LABEL' : 'OP'),
           formatted: formatted || (isLabel ? `${instr.arg1}:` : `${opcode} ${operands}`.trim()),
           operands,
           isLabel,
-          dest: instr.dest,
+          result: resultVal,
+          dest: resultVal,
           arg1: instr.arg1,
           arg2: instr.arg2,
           arg3: instr.arg3,
@@ -69,10 +76,12 @@ export const IRViewer = ({ ir }) => {
         return {
           id: `ir_${idx + 1}`,
           origIndex: idx + 1,
+          operator: opcode || 'OP',
           opcode: opcode || 'OP',
           formatted: trimmed,
           operands,
           isLabel,
+          result: null,
           dest: null,
           arg1: operands,
           arg2: null,
@@ -91,8 +100,8 @@ export const IRViewer = ({ ir }) => {
     if (!filterText || !filterText.trim()) return allInstructions;
     const lower = filterText.toLowerCase().trim();
     return allInstructions.filter((instr) => {
-      const op = String(instr.opcode ?? '').toLowerCase();
-      const dest = String(instr.dest ?? '').toLowerCase();
+      const op = String(instr.operator ?? instr.opcode ?? '').toLowerCase();
+      const res = String(instr.result ?? instr.dest ?? '').toLowerCase();
       const a1 = String(instr.arg1 ?? '').toLowerCase();
       const a2 = String(instr.arg2 ?? '').toLowerCase();
       const a3 = String(instr.arg3 ?? '').toLowerCase();
@@ -101,7 +110,7 @@ export const IRViewer = ({ ir }) => {
       const idxStr = String(instr.origIndex);
       return (
         op.includes(lower) ||
-        dest.includes(lower) ||
+        res.includes(lower) ||
         a1.includes(lower) ||
         a2.includes(lower) ||
         a3.includes(lower) ||
@@ -181,6 +190,7 @@ export const IRViewer = ({ ir }) => {
             <button
               className={`view-toggle-btn ${viewMode === 'formatted' ? 'active' : ''}`}
               onClick={() => setViewMode('formatted')}
+              title="Formatted 3-Address Code list"
             >
               <FaCode size={12} />
               <span>Structured IR</span>
@@ -188,22 +198,23 @@ export const IRViewer = ({ ir }) => {
             <button
               className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
               onClick={() => setViewMode('table')}
+              title="Classical 3-Address Code Quadruples (Operator, Arg 1, Arg 2, Result)"
             >
               <FaTableList size={12} />
-              <span>Tuple Table</span>
+              <span>Quadruples Table</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Viewport: Structured 3AC Table vs Tuple Table */}
+      {/* Viewport: Structured 3AC Table vs Quadruples Table (Operator, Arg1, Arg2, Result) */}
       {viewMode === 'formatted' ? (
         <div className="table-wrapper ir-formatted-table-wrapper">
           <table className="data-table ir-formatted-table">
             <thead>
               <tr>
                 <th className="col-ir-idx">#</th>
-                <th className="col-ir-op">Opcode</th>
+                <th className="col-ir-op">Operator</th>
                 <th className="col-ir-operands">Operands / Arguments</th>
               </tr>
             </thead>
@@ -221,8 +232,8 @@ export const IRViewer = ({ ir }) => {
                   ) : (
                     <>
                       <td className="col-ir-op">
-                        <span className={`ir-opcode-pill ${getOpcodeBadgeClass(instr.opcode)}`}>
-                          {instr.opcode}
+                        <span className={`ir-opcode-pill ${getOpcodeBadgeClass(instr.operator || instr.opcode)}`}>
+                          {instr.operator || instr.opcode}
                         </span>
                       </td>
                       <td className="col-ir-operands font-mono">
@@ -241,10 +252,10 @@ export const IRViewer = ({ ir }) => {
             <thead>
               <tr>
                 <th className="col-ir-idx">#</th>
-                <th className="col-ir-op">Opcode</th>
-                <th className="col-ir-dest">Dest</th>
+                <th className="col-ir-op">Operator</th>
                 <th className="col-ir-arg1">Arg 1</th>
                 <th className="col-ir-arg2">Arg 2</th>
+                <th className="col-ir-result">Result</th>
                 <th className="col-ir-line">Line</th>
               </tr>
             </thead>
@@ -253,13 +264,15 @@ export const IRViewer = ({ ir }) => {
                 <tr key={instr.id || instr.origIndex}>
                   <td className="col-ir-idx text-muted font-mono">{instr.origIndex}</td>
                   <td className="col-ir-op">
-                    <span className={`ir-opcode-pill ${getOpcodeBadgeClass(instr.opcode)}`}>
-                      {instr.opcode}
+                    <span className={`ir-opcode-pill ${getOpcodeBadgeClass(instr.operator || instr.opcode)}`}>
+                      {instr.operator || instr.opcode}
                     </span>
                   </td>
-                  <td className="col-ir-dest ir-operand-dest font-mono">{instr.dest || '—'}</td>
                   <td className="col-ir-arg1 font-mono">{instr.arg1 || '—'}</td>
-                  <td className="col-ir-arg2 font-mono">{instr.arg2 || '—'}</td>
+                  <td className="col-ir-arg2 font-mono">
+                    {instr.arg3 ? `${instr.arg2}, ${instr.arg3}` : (instr.arg2 || '—')}
+                  </td>
+                  <td className="col-ir-result ir-operand-result font-mono">{instr.result || instr.dest || '—'}</td>
                   <td className="col-ir-line text-muted">{instr.line || '—'}</td>
                 </tr>
               ))}

@@ -94,7 +94,9 @@ class IRInstruction:
         """Serializes instruction for JSON API response."""
         return {
             "id": self.id,
+            "operator": self.opcode,
             "opcode": self.opcode,
+            "result": self.dest,
             "dest": self.dest,
             "arg1": self.arg1,
             "arg2": self.arg2,

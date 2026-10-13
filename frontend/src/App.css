@@ -1742,6 +1742,7 @@
   border: 1px solid var(--border);
 }
 
+.ir-operand-result,
 .ir-operand-dest {
   font-weight: 700;
   color: var(--text-primary);
@@ -1778,9 +1779,10 @@
   user-select: none;
 }
 .ir-table .col-ir-op { width: 180px; }
-.ir-table .col-ir-dest { width: 20%; }
 .ir-table .col-ir-arg1 { width: 22%; }
 .ir-table .col-ir-arg2 { width: 20%; }
+.ir-table .col-ir-result,
+.ir-table .col-ir-dest { width: 20%; }
 .ir-table .col-ir-line { width: 12%; text-align: left; }
 
 .ir-region-tag {
